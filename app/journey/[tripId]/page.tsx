@@ -22,6 +22,8 @@ import {
   MapPin,
   ChevronRight,
   ArrowLeft,
+  Sliders,
+  Radio,
 } from "lucide-react";
 
 export default function ActiveJourneyPage({
@@ -39,11 +41,12 @@ export default function ActiveJourneyPage({
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [isEnding, setIsEnding] = useState(false);
   const [simulationMode, setSimulationMode] = useState(false);
+  const [simSliderVal, setSimSliderVal] = useState<number>(0);
 
   const locationProviderRef = useRef<BrowserLocationProvider | null>(null);
   const unsubscribeGpsRef = useRef<(() => void) | null>(null);
 
-  // 1. Load Trip Data (from Supabase or local sessionStorage)
+  // 1. Load Trip Data
   useEffect(() => {
     async function loadTrip() {
       if (typeof window !== "undefined") {
@@ -80,7 +83,6 @@ export default function ActiveJourneyPage({
           setTrip(data);
         }
 
-        // Fetch latest location
         const { data: locData } = await supabase
           .from("trip_locations")
           .select("*")
@@ -122,7 +124,6 @@ export default function ActiveJourneyPage({
       async (reading) => {
         setCurrentLocation(reading);
 
-        // Upload reading to Supabase
         if (isSupabaseConfigured && supabase) {
           try {
             await supabase.from("trip_locations").insert({
@@ -177,23 +178,31 @@ export default function ActiveJourneyPage({
     router.push("/");
   };
 
-  // Remaining distance calculation
   const destLat = trip?.destination_lat || 11.0168;
   const destLng = trip?.destination_lng || 76.9558;
-  const currentLat = currentLocation?.latitude || trip?.start_lat || 13.0827;
-  const currentLng = currentLocation?.longitude || trip?.start_lng || 80.2707;
+  const startLat = trip?.start_lat || 13.0827;
+  const startLng = trip?.start_lng || 80.2707;
+
+  const currentLat = currentLocation?.latitude || startLat;
+  const currentLng = currentLocation?.longitude || startLng;
 
   const remainingKm = calculateDistanceKm(currentLat, currentLng, destLat, destLng);
 
-  // Simulation step helper
-  const simulateStepCloser = (targetRemainingKm: number) => {
+  // Smooth Interactive Slider Simulation Step
+  const handleSliderChange = (percentage: number) => {
+    setSimSliderVal(percentage);
     setSimulationMode(true);
+
+    const fraction = percentage / 100;
+    const newLat = startLat + (destLat - startLat) * fraction;
+    const newLng = startLng + (destLng - startLng) * fraction;
+
     const simulatedReading: LocationReading = {
-      latitude: destLat - (destLat - 13.0827) * (targetRemainingKm / 400),
-      longitude: destLng - (destLng - 80.2707) * (targetRemainingKm / 400),
+      latitude: newLat,
+      longitude: newLng,
       accuracy: 8,
       timestamp: Date.now(),
-      speed: 16.6, // ~60 km/h
+      speed: 18.0, // ~65 km/h
     };
 
     setCurrentLocation(simulatedReading);
@@ -218,16 +227,16 @@ export default function ActiveJourneyPage({
   return (
     <div className="min-h-screen bg-[#030712] text-slate-100 flex flex-col justify-between">
       <Navbar
-        statusBadge={isSharingActive ? "Traveller Live" : "Sharing Paused"}
+        statusBadge={isSharingActive ? "Live GPS Active" : "Sharing Paused"}
         badgeType={isSharingActive ? "active" : "neutral"}
       />
 
-      <main className="mx-auto max-w-2xl px-4 py-8 sm:px-6 w-full space-y-6 flex-1">
+      <main className="mx-auto max-w-2xl px-4 py-6 sm:px-6 w-full space-y-5 flex-1">
         {/* Top Controls Bar */}
         <div className="flex items-center justify-between">
           <Link
             href="/"
-            className="text-xs text-slate-400 hover:text-white transition flex items-center gap-1.5 font-medium"
+            className="text-xs text-slate-400 hover:text-white transition flex items-center gap-1.5 font-bold"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
             <span>Home</span>
@@ -236,7 +245,7 @@ export default function ActiveJourneyPage({
           <div className="flex items-center gap-2">
             <button
               onClick={() => setIsSharingActive(!isSharingActive)}
-              className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl border font-semibold transition ${
+              className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl border font-bold transition ${
                 isSharingActive
                   ? "bg-amber-500/10 border-amber-500/30 text-amber-300 hover:bg-amber-500/20"
                   : "bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20"
@@ -258,7 +267,7 @@ export default function ActiveJourneyPage({
             <button
               onClick={handleEndJourney}
               disabled={isEnding}
-              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl bg-rose-600/90 hover:bg-rose-600 text-white font-semibold transition shadow-sm"
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold transition shadow-sm"
             >
               <Square className="h-3.5 w-3.5" />
               <span>{isEnding ? "Ending..." : "End Trip"}</span>
@@ -285,7 +294,7 @@ export default function ActiveJourneyPage({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <button
             onClick={() => setIsShareModalOpen(true)}
-            className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-bold text-sm transition flex items-center justify-center gap-2 shadow-lg shadow-blue-500/25"
+            className="w-full py-4 px-4 rounded-2xl bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-black text-sm transition flex items-center justify-center gap-2 shadow-xl shadow-blue-500/25"
           >
             <Share2 className="h-4 w-4" />
             <span>Share Guardian Link</span>
@@ -293,18 +302,18 @@ export default function ActiveJourneyPage({
 
           <button
             onClick={handleEndJourney}
-            className="w-full py-3.5 px-4 rounded-2xl border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 font-bold text-sm transition flex items-center justify-center gap-2"
+            className="w-full py-4 px-4 rounded-2xl border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 font-black text-sm transition flex items-center justify-center gap-2"
           >
             <Square className="h-4 w-4" />
             <span>Stop & End Trip</span>
           </button>
         </div>
 
-        {/* Interactive Live Leaflet Map */}
+        {/* Interactive Live Map */}
         <div className="space-y-2">
           <div className="flex items-center justify-between text-xs text-slate-400">
             <span className="font-bold text-white flex items-center gap-1.5">
-              <MapPin className="h-3.5 w-3.5 text-blue-400" />
+              <MapPin className="h-3.5 w-3.5 text-cyan-400" />
               <span>Live Route Map</span>
             </span>
             <span className="text-[11px] text-emerald-400 font-mono flex items-center gap-1">
@@ -327,48 +336,40 @@ export default function ActiveJourneyPage({
           />
         </div>
 
-        {/* Demo Simulation Controls */}
-        <div className="glass-panel rounded-2xl p-4 sm:p-5">
-          <div className="flex items-center justify-between mb-1.5">
+        {/* ========================================================================= */}
+        {/* INTERACTIVE DRAG-TO-SIMULATE MOVEMENT SLIDER */}
+        {/* ========================================================================= */}
+        <div className="glass-panel-glow rounded-3xl p-5 sm:p-6">
+          <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <FlaskConical className="h-4 w-4 text-cyan-400" />
-              <span className="text-xs font-bold text-slate-200">
-                Testing / Demo Simulation
+              <Sliders className="h-4 w-4 text-cyan-400" />
+              <span className="text-xs font-bold text-white uppercase tracking-wider">
+                Live Movement Simulator
               </span>
             </div>
-            <span className="text-[10px] text-slate-500 font-mono">
-              Simulate movement
+            <span className="text-[11px] font-mono text-cyan-300 font-bold">
+              {simSliderVal}% Towards Destination
             </span>
           </div>
-          <p className="text-[11px] text-slate-400 mb-3">
-            Click any button below to immediately jump closer to test guardian alert triggers:
+
+          <p className="text-xs text-slate-400 mb-4">
+            Slide forward to simulate moving towards {trip?.destination_name} and trigger your guardian&apos;s alert chimes:
           </p>
 
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => simulateStepCloser(120)}
-              className="text-xs px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
-            >
-              120 km (Far)
-            </button>
-            <button
-              onClick={() => simulateStepCloser(49)}
-              className="text-xs px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-semibold transition"
-            >
-              49 km (Trigger 50km)
-            </button>
-            <button
-              onClick={() => simulateStepCloser(24)}
-              className="text-xs px-3 py-1.5 rounded-xl bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/40 font-semibold transition"
-            >
-              24 km (Trigger 25km)
-            </button>
-            <button
-              onClick={() => simulateStepCloser(4)}
-              className="text-xs px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 font-semibold transition"
-            >
-              4 km (Arrival Gate)
-            </button>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            value={simSliderVal}
+            onChange={(e) => handleSliderChange(Number(e.target.value))}
+            className="w-full mb-3"
+            aria-label="Simulate movement towards destination"
+          />
+
+          <div className="flex justify-between text-[10px] text-slate-500 font-bold">
+            <span>Origin ({trip?.start_name || "Start"})</span>
+            <span className="text-amber-400">50km Alarm Zone</span>
+            <span>Arrival ({trip?.destination_name || "End"})</span>
           </div>
         </div>
 
@@ -382,7 +383,7 @@ export default function ActiveJourneyPage({
       </main>
 
       <footer className="py-6 text-center text-xs text-slate-600">
-        JourneyGuard • Traveller Dashboard
+        JourneyGuard • Traveller Control Console
       </footer>
     </div>
   );

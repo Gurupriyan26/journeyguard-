@@ -24,8 +24,13 @@ import {
   MapPin,
   ArrowLeft,
   X,
-  Smartphone,
+  Car,
+  Moon,
+  ListOrdered,
+  Layers,
 } from "lucide-react";
+
+type DashboardTab = "map" | "pickup" | "alarm" | "timeline";
 
 export default function GuardianTrackingPage({
   params,
@@ -34,6 +39,7 @@ export default function GuardianTrackingPage({
 }) {
   const { token } = use(params);
 
+  const [activeTab, setActiveTab] = useState<DashboardTab>("map");
   const [trip, setTrip] = useState<Trip | null>(null);
   const [latestLocation, setLatestLocation] = useState<TripLocation | null>(null);
   const [previousDistance, setPreviousDistance] = useState<number | null>(null);
@@ -172,7 +178,7 @@ export default function GuardianTrackingPage({
             setTriggeredThresholds(newTriggered);
             triggeredThresholdsRef.current = newTriggered;
 
-            const alertText = `🚨 Traveller is now approximately ${currentDist} km from ${foundTrip.destination_name}. Time to prepare for pickup!`;
+            const alertText = `🚨 Traveller is now approx ${currentDist} km from ${foundTrip.destination_name}. Time to prepare for pickup!`;
             setActiveAlertBanner(alertText);
             playAlertChime();
             showSystemNotification(
@@ -189,7 +195,6 @@ export default function GuardianTrackingPage({
     }
 
     fetchTripData();
-    // Poll updates every 5 seconds
     const interval = setInterval(fetchTripData, 5000);
 
     return () => {
@@ -239,23 +244,23 @@ export default function GuardianTrackingPage({
     <div className="min-h-screen bg-[#030712] text-slate-100 flex flex-col justify-between">
       <Navbar statusBadge="Guardian Active" badgeType="guardian" />
 
-      <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6 w-full space-y-6 flex-1">
+      <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6 w-full space-y-5 flex-1">
         {/* Navigation & Header */}
         <div className="flex items-center justify-between">
           <Link
             href="/"
-            className="text-xs text-slate-400 hover:text-white transition flex items-center gap-1.5 font-medium"
+            className="text-xs text-slate-400 hover:text-white transition flex items-center gap-1.5 font-bold"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
             <span>Home</span>
           </Link>
 
-          <span className="text-[11px] px-3 py-1 rounded-full bg-blue-500/10 text-cyan-300 border border-blue-500/30 font-bold">
-            Family Care Portal
+          <span className="text-[11px] px-3 py-1 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 font-bold">
+            🛡️ Parent Care Portal
           </span>
         </div>
 
-        {/* Reassuring Parent Safety Header */}
+        {/* Reassuring Parent Status Header */}
         <ParentStatusHeader
           destinationName={trip.destination_name}
           isSharingActive={trip.status === "active"}
@@ -265,15 +270,15 @@ export default function GuardianTrackingPage({
 
         {/* High-priority Arrival Alert Banner */}
         {activeAlertBanner && (
-          <div className="rounded-3xl border-2 border-amber-500/80 bg-gradient-to-r from-amber-950 via-slate-900 to-amber-950 p-5 shadow-2xl animate-pulse">
+          <div className="rounded-3xl border-2 border-amber-500/80 bg-gradient-to-r from-amber-950 via-slate-900 to-amber-950 p-5 shadow-2xl animate-slide-up">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-start gap-3">
-                <span className="text-3xl">🚨</span>
+                <span className="text-3xl animate-bounce">🚨</span>
                 <div>
-                  <h3 className="font-extrabold text-amber-200 text-sm">
+                  <h3 className="font-black text-amber-200 text-sm">
                     Arrival Threshold Reached!
                   </h3>
-                  <p className="text-xs text-slate-200 mt-1 leading-relaxed font-medium">
+                  <p className="text-xs text-slate-200 mt-1 leading-relaxed font-semibold">
                     {activeAlertBanner}
                   </p>
                 </div>
@@ -289,77 +294,156 @@ export default function GuardianTrackingPage({
           </div>
         )}
 
-        {/* GPS Live Freshness & Signal Badge */}
-        <LocationStatus
-          isSharingActive={trip.status === "active"}
-          lastUpdatedTimestamp={latestLocation?.recorded_at}
-          accuracyMeters={latestLocation?.accuracy}
-        />
-
-        {/* Primary Distance & Live ETA Card */}
+        {/* Primary Distance & Live ETA Card (Always visible) */}
         <DistanceCard
           remainingDistanceKm={currentDistanceKm}
           destinationName={trip.destination_name}
           startName={trip.start_name || undefined}
         />
 
-        {/* Parent Pickup Assistant: When to leave home & driving directions */}
-        <ParentPickupAssistant
-          remainingDistanceKm={currentDistanceKm}
-          destinationName={trip.destination_name}
-          destinationLat={destLat}
-          destinationLng={destLng}
-        />
+        {/* ========================================================================= */}
+        {/* SLIDING TAB BAR SELECTOR */}
+        {/* ========================================================================= */}
+        <div className="p-1.5 rounded-2xl bg-slate-900/90 border border-slate-800 backdrop-blur-xl flex items-center gap-1 overflow-x-auto scrollbar-hide">
+          <button
+            type="button"
+            onClick={() => setActiveTab("map")}
+            className={`flex-1 min-w-[120px] flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-300 ${
+              activeTab === "map"
+                ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-lg shadow-blue-500/25"
+                : "text-slate-400 hover:text-white hover:bg-slate-800/50"
+            }`}
+          >
+            <MapPin className="h-3.5 w-3.5" />
+            <span>Live Map</span>
+          </button>
 
-        {/* 4-Stage Trip Progression Timeline */}
-        <TripTimeline
-          startName={trip.start_name || undefined}
-          destinationName={trip.destination_name}
-          remainingDistanceKm={currentDistanceKm}
-          selectedThresholdKm={selectedThreshold}
-          isCompleted={trip.status === "completed"}
-        />
+          <button
+            type="button"
+            onClick={() => setActiveTab("pickup")}
+            className={`flex-1 min-w-[120px] flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-300 ${
+              activeTab === "pickup"
+                ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-lg shadow-blue-500/25"
+                : "text-slate-400 hover:text-white hover:bg-slate-800/50"
+            }`}
+          >
+            <Car className="h-3.5 w-3.5" />
+            <span>Pickup Timing</span>
+          </button>
 
-        {/* Night Sleep & Threshold Alert Selector */}
-        <AlertSelector
-          currentDistanceKm={currentDistanceKm}
-          selectedThreshold={selectedThreshold}
-          onSelectThreshold={(km) => {
-            setSelectedThreshold(km);
-            requestNotificationPermission();
-          }}
-          triggeredThresholds={triggeredThresholds}
-        />
+          <button
+            type="button"
+            onClick={() => setActiveTab("alarm")}
+            className={`flex-1 min-w-[120px] flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-300 ${
+              activeTab === "alarm"
+                ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-lg shadow-blue-500/25"
+                : "text-slate-400 hover:text-white hover:bg-slate-800/50"
+            }`}
+          >
+            <Moon className="h-3.5 w-3.5" />
+            <span>Night Alarms</span>
+          </button>
 
-        {/* Live Interactive Leaflet Map */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between text-xs text-slate-400">
-            <span className="font-bold text-white flex items-center gap-1.5">
-              <MapPin className="h-3.5 w-3.5 text-cyan-400" />
-              <span>Live Visual GPS Route</span>
-            </span>
-            <span className="text-[11px] text-emerald-400 font-mono flex items-center gap-1">
-              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping" />
-              Auto-updating (5s)
-            </span>
-          </div>
-
-          <JourneyMap
-            travellerPos={
-              latestLocation
-                ? { lat: latestLocation.latitude, lng: latestLocation.longitude }
-                : null
-            }
-            destinationPos={{
-              lat: destLat,
-              lng: destLng,
-              name: trip.destination_name,
-            }}
-          />
+          <button
+            type="button"
+            onClick={() => setActiveTab("timeline")}
+            className={`flex-1 min-w-[120px] flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-300 ${
+              activeTab === "timeline"
+                ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-lg shadow-blue-500/25"
+                : "text-slate-400 hover:text-white hover:bg-slate-800/50"
+            }`}
+          >
+            <ListOrdered className="h-3.5 w-3.5" />
+            <span>Timeline</span>
+          </button>
         </div>
 
-        {/* Sound & Notification Status Box */}
-        <div className="glass-panel rounded-3xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between text-xs gap-3">
+        {/* ========================================================================= */}
+        {/* SLIDING TAB CONTENT VIEWS */}
+        {/* ========================================================================= */}
+        <div className="transition-all duration-300">
+          {/* TAB 1: LIVE MAP & TELEMETRY */}
+          {activeTab === "map" && (
+            <div className="space-y-4 animate-slide-in-right">
+              {/* GPS Status */}
+              <LocationStatus
+                isSharingActive={trip.status === "active"}
+                lastUpdatedTimestamp={latestLocation?.recorded_at}
+                accuracyMeters={latestLocation?.accuracy}
+              />
+
+              {/* Interactive Live Map */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs text-slate-400">
+                  <span className="font-bold text-white flex items-center gap-1.5">
+                    <MapPin className="h-3.5 w-3.5 text-cyan-400" />
+                    <span>Real-time GPS Tracking</span>
+                  </span>
+                  <span className="text-[11px] text-emerald-400 font-mono flex items-center gap-1">
+                    <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping" />
+                    Auto-updating (5s)
+                  </span>
+                </div>
+
+                <JourneyMap
+                  travellerPos={
+                    latestLocation
+                      ? { lat: latestLocation.latitude, lng: latestLocation.longitude }
+                      : null
+                  }
+                  destinationPos={{
+                    lat: destLat,
+                    lng: destLng,
+                    name: trip.destination_name,
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: PICKUP ASSISTANT */}
+          {activeTab === "pickup" && (
+            <div className="animate-slide-in-left">
+              <ParentPickupAssistant
+                remainingDistanceKm={currentDistanceKm}
+                destinationName={trip.destination_name}
+                destinationLat={destLat}
+                destinationLng={destLng}
+              />
+            </div>
+          )}
+
+          {/* TAB 3: NIGHT SLEEP ALARMS */}
+          {activeTab === "alarm" && (
+            <div className="animate-slide-in-right">
+              <AlertSelector
+                currentDistanceKm={currentDistanceKm}
+                selectedThreshold={selectedThreshold}
+                onSelectThreshold={(km) => {
+                  setSelectedThreshold(km);
+                  requestNotificationPermission();
+                }}
+                triggeredThresholds={triggeredThresholds}
+              />
+            </div>
+          )}
+
+          {/* TAB 4: TRIP PROGRESSION TIMELINE */}
+          {activeTab === "timeline" && (
+            <div className="animate-slide-in-left">
+              <TripTimeline
+                startName={trip.start_name || undefined}
+                destinationName={trip.destination_name}
+                remainingDistanceKm={currentDistanceKm}
+                selectedThresholdKm={selectedThreshold}
+                isCompleted={trip.status === "completed"}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Sound & Notification Status Box (Persistent footer) */}
+        <div className="glass-panel rounded-3xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between text-xs gap-3">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-800 text-slate-300">
               {notificationEnabled ? (
