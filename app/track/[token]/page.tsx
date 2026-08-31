@@ -11,6 +11,9 @@ import JourneyMap from "@/components/maps/JourneyMap";
 import DistanceCard from "@/components/journey/DistanceCard";
 import LocationStatus from "@/components/journey/LocationStatus";
 import AlertSelector from "@/components/guardian/AlertSelector";
+import ParentStatusHeader from "@/components/guardian/ParentStatusHeader";
+import ParentPickupAssistant from "@/components/guardian/ParentPickupAssistant";
+import TripTimeline from "@/components/guardian/TripTimeline";
 import { Trip, TripLocation } from "@/types/journey";
 import {
   BellRing,
@@ -21,6 +24,7 @@ import {
   MapPin,
   ArrowLeft,
   X,
+  Smartphone,
 } from "lucide-react";
 
 export default function GuardianTrackingPage({
@@ -168,7 +172,7 @@ export default function GuardianTrackingPage({
             setTriggeredThresholds(newTriggered);
             triggeredThresholdsRef.current = newTriggered;
 
-            const alertText = `🚨 Traveller is now approx ${currentDist} km from ${foundTrip.destination_name}. Time to prepare for pickup!`;
+            const alertText = `🚨 Traveller is now approximately ${currentDist} km from ${foundTrip.destination_name}. Time to prepare for pickup!`;
             setActiveAlertBanner(alertText);
             playAlertChime();
             showSystemNotification(
@@ -200,13 +204,14 @@ export default function GuardianTrackingPage({
   const travLng = latestLocation?.longitude || trip?.start_lng || 80.2707;
 
   const currentDistanceKm = calculateDistanceKm(travLat, travLng, destLat, destLng);
+  const shareUrl = typeof window !== "undefined" ? window.location.href : "";
 
   if (isLoading) {
     return (
       <div className="min-h-screen bg-[#030712] px-4 py-16 text-white flex items-center justify-center">
         <div className="text-center space-y-4">
-          <div className="w-12 h-12 border-3 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-sm text-slate-400 font-medium">Verifying secure tracking link...</p>
+          <div className="w-12 h-12 border-3 border-cyan-500 border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-sm text-slate-400 font-medium">Connecting to secure traveller GPS stream...</p>
         </div>
       </div>
     );
@@ -223,7 +228,7 @@ export default function GuardianTrackingPage({
             href="/track"
             className="inline-block px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition shadow-md shadow-blue-500/20"
           >
-            Try Another Token
+            Enter Another Token
           </Link>
         </div>
       </div>
@@ -234,8 +239,8 @@ export default function GuardianTrackingPage({
     <div className="min-h-screen bg-[#030712] text-slate-100 flex flex-col justify-between">
       <Navbar statusBadge="Guardian Active" badgeType="guardian" />
 
-      <main className="mx-auto max-w-2xl px-4 py-8 sm:px-6 w-full space-y-6 flex-1">
-        {/* Top Header */}
+      <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6 w-full space-y-6 flex-1">
+        {/* Navigation & Header */}
         <div className="flex items-center justify-between">
           <Link
             href="/"
@@ -245,16 +250,22 @@ export default function GuardianTrackingPage({
             <span>Home</span>
           </Link>
 
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] px-3 py-1 rounded-full bg-blue-500/10 text-blue-300 border border-blue-500/30 font-semibold">
-              Guardian Mode
-            </span>
-          </div>
+          <span className="text-[11px] px-3 py-1 rounded-full bg-blue-500/10 text-cyan-300 border border-blue-500/30 font-bold">
+            Family Care Portal
+          </span>
         </div>
 
-        {/* High-priority Alert Banner */}
+        {/* Reassuring Parent Safety Header */}
+        <ParentStatusHeader
+          destinationName={trip.destination_name}
+          isSharingActive={trip.status === "active"}
+          shareUrl={shareUrl}
+          speedKmh={null}
+        />
+
+        {/* High-priority Arrival Alert Banner */}
         {activeAlertBanner && (
-          <div className="rounded-2xl border-2 border-amber-500/80 bg-gradient-to-r from-amber-950 via-slate-900 to-amber-950 p-5 shadow-2xl animate-pulse">
+          <div className="rounded-3xl border-2 border-amber-500/80 bg-gradient-to-r from-amber-950 via-slate-900 to-amber-950 p-5 shadow-2xl animate-pulse">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-start gap-3">
                 <span className="text-3xl">🚨</span>
@@ -278,21 +289,38 @@ export default function GuardianTrackingPage({
           </div>
         )}
 
-        {/* Location Staleness & Consent Status */}
+        {/* GPS Live Freshness & Signal Badge */}
         <LocationStatus
           isSharingActive={trip.status === "active"}
           lastUpdatedTimestamp={latestLocation?.recorded_at}
           accuracyMeters={latestLocation?.accuracy}
         />
 
-        {/* Distance Card */}
+        {/* Primary Distance & Live ETA Card */}
         <DistanceCard
           remainingDistanceKm={currentDistanceKm}
           destinationName={trip.destination_name}
           startName={trip.start_name || undefined}
         />
 
-        {/* Threshold Alert Selector */}
+        {/* Parent Pickup Assistant: When to leave home & driving directions */}
+        <ParentPickupAssistant
+          remainingDistanceKm={currentDistanceKm}
+          destinationName={trip.destination_name}
+          destinationLat={destLat}
+          destinationLng={destLng}
+        />
+
+        {/* 4-Stage Trip Progression Timeline */}
+        <TripTimeline
+          startName={trip.start_name || undefined}
+          destinationName={trip.destination_name}
+          remainingDistanceKm={currentDistanceKm}
+          selectedThresholdKm={selectedThreshold}
+          isCompleted={trip.status === "completed"}
+        />
+
+        {/* Night Sleep & Threshold Alert Selector */}
         <AlertSelector
           currentDistanceKm={currentDistanceKm}
           selectedThreshold={selectedThreshold}
@@ -303,16 +331,16 @@ export default function GuardianTrackingPage({
           triggeredThresholds={triggeredThresholds}
         />
 
-        {/* Live Leaflet Map */}
+        {/* Live Interactive Leaflet Map */}
         <div className="space-y-2">
           <div className="flex items-center justify-between text-xs text-slate-400">
             <span className="font-bold text-white flex items-center gap-1.5">
-              <MapPin className="h-3.5 w-3.5 text-blue-400" />
-              <span>Live Route & Position</span>
+              <MapPin className="h-3.5 w-3.5 text-cyan-400" />
+              <span>Live Visual GPS Route</span>
             </span>
             <span className="text-[11px] text-emerald-400 font-mono flex items-center gap-1">
               <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping" />
-              Auto-refreshing (5s)
+              Auto-updating (5s)
             </span>
           </div>
 
@@ -330,47 +358,58 @@ export default function GuardianTrackingPage({
           />
         </div>
 
-        {/* Notification Status Banner */}
-        <div className="glass-panel rounded-2xl p-4 flex items-center justify-between text-xs gap-3">
-          <div className="flex items-center gap-2.5">
-            {notificationEnabled ? (
-              <BellRing className="h-4 w-4 text-emerald-400 shrink-0" />
-            ) : (
-              <BellOff className="h-4 w-4 text-amber-400 shrink-0" />
-            )}
-            <span className="text-slate-300">
-              {notificationEnabled
-                ? "Audio Chime & System Notifications are Active"
-                : "Enable notifications so we can wake you up when traveller arrives"}
-            </span>
+        {/* Sound & Notification Status Box */}
+        <div className="glass-panel rounded-3xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between text-xs gap-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-800 text-slate-300">
+              {notificationEnabled ? (
+                <BellRing className="h-5 w-5 text-emerald-400" />
+              ) : (
+                <BellOff className="h-5 w-5 text-amber-400" />
+              )}
+            </div>
+            <div>
+              <span className="font-bold text-slate-200 block">
+                {notificationEnabled
+                  ? "Audio Chime & Phone Notifications Armed"
+                  : "Audio Notifications Disabled"}
+              </span>
+              <span className="text-[11px] text-slate-400">
+                {notificationEnabled
+                  ? "Leave this tab open on your phone or bedside table."
+                  : "Enable notifications so the app can wake you up when the traveller arrives."}
+              </span>
+            </div>
           </div>
 
-          {!notificationEnabled ? (
-            <button
-              onClick={() => {
-                requestNotificationPermission().then((res) => {
-                  setNotificationEnabled(res);
-                  playAlertChime();
-                });
-              }}
-              className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition shrink-0 shadow-sm"
-            >
-              Enable Alerts
-            </button>
-          ) : (
-            <button
-              onClick={playAlertChime}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition shrink-0 border border-slate-700"
-            >
-              <Volume2 className="h-3.5 w-3.5 text-blue-400" />
-              <span>Test Audio</span>
-            </button>
-          )}
+          <div className="flex items-center gap-2 self-end sm:self-center">
+            {!notificationEnabled ? (
+              <button
+                onClick={() => {
+                  requestNotificationPermission().then((res) => {
+                    setNotificationEnabled(res);
+                    playAlertChime();
+                  });
+                }}
+                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition shadow-sm shrink-0"
+              >
+                Enable Alarms
+              </button>
+            ) : (
+              <button
+                onClick={playAlertChime}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition shrink-0 border border-slate-700"
+              >
+                <Volume2 className="h-4 w-4 text-cyan-400" />
+                <span>Test Alarm Chime</span>
+              </button>
+            )}
+          </div>
         </div>
       </main>
 
       <footer className="py-6 text-center text-xs text-slate-600">
-        JourneyGuard • Guardian Live Tracking Dashboard
+        JourneyGuard • Professional Family Tracking & Guardian Alert Portal
       </footer>
     </div>
   );
