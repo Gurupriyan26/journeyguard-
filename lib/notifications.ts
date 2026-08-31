@@ -4,6 +4,8 @@
  * plus HTML5 Notification API for system-level notifications.
  */
 
+import { triggerHaptic } from "@/lib/haptics";
+
 export type AlarmSoundType = "loud_siren" | "alarm_clock" | "fanfare" | "gentle_chime";
 
 let persistentAlarmInterval: any = null;
@@ -38,6 +40,8 @@ export function unlockAudioContext() {
  * Play a single pulse of a selected alert sound
  */
 export function playAlertSound(soundType: AlarmSoundType = "loud_siren") {
+  triggerHaptic(soundType === "loud_siren" || soundType === "alarm_clock" ? "alarm" : "warning");
+
   const ctx = getAudioContext();
   if (!ctx) return;
 
