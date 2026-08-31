@@ -21,9 +21,9 @@ import {
   Phone,
   User,
   Bell,
-  Battery,
   Sliders,
 } from "lucide-react";
+import DestinationAutocomplete from "@/components/journey/DestinationAutocomplete";
 
 // Predefined popular hubs with descriptive tags & icons
 const DESTINATION_PRESETS = [
@@ -39,6 +39,7 @@ const DESTINATION_PRESETS = [
 export default function CreateJourney() {
   const router = useRouter();
   const [destination, setDestination] = useState("");
+  const [destinationCoords, setDestinationCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [travellerName, setTravellerName] = useState("");
   const [travellerPhone, setTravellerPhone] = useState("");
   const [defaultThresholdKm, setDefaultThresholdKm] = useState<number>(50);
@@ -65,27 +66,46 @@ export default function CreateJourney() {
     setGpsError(null);
 
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
+      async (pos) => {
+        const { latitude, longitude, accuracy } = pos.coords;
+        let placeName = "Current Location";
+
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=10`
+          );
+          const data = await res.json();
+          if (data && data.address) {
+            placeName =
+              data.address.city ||
+              data.address.town ||
+              data.address.village ||
+              data.address.state_district ||
+              "Current Location";
+          }
+        } catch {}
+
         setStartLocation({
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          accuracy: pos.coords.accuracy,
-          name: "Current GPS Location",
+          lat: latitude,
+          lng: longitude,
+          accuracy,
+          name: placeName,
         });
         setIsGettingGps(false);
       },
       (err) => {
-        console.warn("GPS error:", err.message);
+        setIsGettingGps(false);
+        setGpsError(
+          "Could not acquire exact GPS location. Defaulting to Chennai hub."
+        );
         setStartLocation({
           lat: 13.0827,
           lng: 80.2707,
           accuracy: 50,
-          name: "Chennai (Default / GPS unavailable)",
+          name: "Chennai",
         });
-        setGpsError("Using default starting point (GPS permissions optional).");
-        setIsGettingGps(false);
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
     );
   };
 
@@ -102,30 +122,35 @@ export default function CreateJourney() {
     setSubmitError(null);
 
     try {
-      const cleanDest = destination.trim().toLowerCase();
       let destLat = 11.0168;
       let destLng = 76.9558;
 
-      const matchedPreset = DESTINATION_PRESETS.find(
-        (p) => p.name.toLowerCase() === cleanDest
-      );
-
-      if (matchedPreset) {
-        destLat = matchedPreset.lat;
-        destLng = matchedPreset.lng;
+      if (destinationCoords) {
+        destLat = destinationCoords.lat;
+        destLng = destinationCoords.lng;
       } else {
-        try {
-          const res = await fetch(
-            `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
-              destination
-            )}&limit=1`
-          );
-          const data = await res.json();
-          if (data && data.length > 0) {
-            destLat = parseFloat(data[0].lat);
-            destLng = parseFloat(data[0].lon);
-          }
-        } catch {}
+        const cleanDest = destination.trim().toLowerCase();
+        const matchedPreset = DESTINATION_PRESETS.find(
+          (p) => p.name.toLowerCase() === cleanDest
+        );
+
+        if (matchedPreset) {
+          destLat = matchedPreset.lat;
+          destLng = matchedPreset.lng;
+        } else {
+          try {
+            const res = await fetch(
+              `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+                destination
+              )}&limit=1`
+            );
+            const data = await res.json();
+            if (data && data.length > 0) {
+              destLat = parseFloat(data[0].lat);
+              destLng = parseFloat(data[0].lon);
+            }
+          } catch {}
+        }
       }
 
       const sLat = startLocation?.lat || 13.0827;
@@ -273,25 +298,25 @@ export default function CreateJourney() {
               )}
             </div>
 
-            {/* Destination Input Field */}
+            {/* Destination Autocomplete Field */}
             <div>
               <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-300">
-                Where are you heading?
+                Where are you heading? (Live Auto-Suggestions)
               </label>
 
-              <div className="relative">
-                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400">
-                  <Search className="h-4 w-4" />
-                </div>
-                <input
-                  type="text"
-                  value={destination}
-                  onChange={(e) => setDestination(e.target.value)}
-                  placeholder="Type city or select from the sliding list below..."
-                  required
-                  className="w-full rounded-2xl border border-slate-700 bg-slate-950/90 pl-10 pr-4 py-4 text-sm text-white placeholder:text-slate-500 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/30 transition font-medium"
-                />
-              </div>
+              <DestinationAutocomplete
+                value={destination}
+                onChange={(name, lat, lng) => {
+                  setDestination(name);
+                  if (lat !== undefined && lng !== undefined) {
+                    setDestinationCoords({ lat, lng });
+                  } else {
+                    setDestinationCoords(null);
+                  }
+                }}
+                placeholder="Type city, railway station, bus stand or town..."
+                required
+              />
             </div>
 
             {/* Sliding Popular Destination Carousel */}
@@ -312,7 +337,10 @@ export default function CreateJourney() {
                     <button
                       key={city.name}
                       type="button"
-                      onClick={() => setDestination(city.name)}
+                      onClick={() => {
+                        setDestination(city.name);
+                        setDestinationCoords({ lat: city.lat, lng: city.lng });
+                      }}
                       className={`snap-start shrink-0 w-36 sm:w-40 p-3.5 rounded-2xl border text-left transition-all duration-200 relative flex flex-col justify-between ${
                         isSelected
                           ? "bg-gradient-to-b from-blue-600 to-cyan-600 text-white border-cyan-400 shadow-lg shadow-blue-500/25 scale-[1.03] ring-2 ring-cyan-400/40"
