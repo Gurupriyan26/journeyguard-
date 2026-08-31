@@ -6,7 +6,14 @@ import Navbar from "@/components/common/Navbar";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase/client";
 import { hashToken } from "@/lib/tokens";
 import { calculateDistanceKm, hasCrossedThreshold } from "@/lib/distance";
-import { playAlertChime, requestNotificationPermission, showSystemNotification } from "@/lib/notifications";
+import {
+  playAlertSound,
+  startPersistentAlarm,
+  stopPersistentAlarm,
+  requestNotificationPermission,
+  showSystemNotification,
+  AlarmSoundType,
+} from "@/lib/notifications";
 import JourneyMap from "@/components/maps/JourneyMap";
 import DistanceCard from "@/components/journey/DistanceCard";
 import LocationStatus from "@/components/journey/LocationStatus";
@@ -14,6 +21,7 @@ import AlertSelector from "@/components/guardian/AlertSelector";
 import ParentStatusHeader from "@/components/guardian/ParentStatusHeader";
 import ParentPickupAssistant from "@/components/guardian/ParentPickupAssistant";
 import TripTimeline from "@/components/guardian/TripTimeline";
+import AlarmTriggerModal from "@/components/guardian/AlarmTriggerModal";
 import { Trip, TripLocation } from "@/types/journey";
 import {
   BellRing,
@@ -44,8 +52,10 @@ export default function GuardianTrackingPage({
   const [latestLocation, setLatestLocation] = useState<TripLocation | null>(null);
   const [previousDistance, setPreviousDistance] = useState<number | null>(null);
   const [selectedThreshold, setSelectedThreshold] = useState<number>(50); // Default 50km
+  const [selectedSound, setSelectedSound] = useState<AlarmSoundType>("loud_siren");
   const [triggeredThresholds, setTriggeredThresholds] = useState<number[]>([]);
   const [activeAlertBanner, setActiveAlertBanner] = useState<string | null>(null);
+  const [isAlarmModalOpen, setIsAlarmModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [notificationEnabled, setNotificationEnabled] = useState(false);
@@ -105,7 +115,6 @@ export default function GuardianTrackingPage({
         if (isSupabaseConfigured && supabase) {
           const tokenHash = await hashToken(token);
 
-          // Find guardian access record
           const { data: accessData } = await supabase
             .from("guardian_access")
             .select("trip_id, expires_at")
@@ -129,7 +138,6 @@ export default function GuardianTrackingPage({
               foundTrip = tripData;
             }
 
-            // Fetch latest location
             const { data: locData } = await supabase
               .from("trip_locations")
               .select("*")
@@ -180,10 +188,11 @@ export default function GuardianTrackingPage({
 
             const alertText = `🚨 Traveller is now approx ${currentDist} km from ${foundTrip.destination_name}. Time to prepare for pickup!`;
             setActiveAlertBanner(alertText);
-            playAlertChime();
+            setIsAlarmModalOpen(true); // Open emergency siren modal
             showSystemNotification(
               `JourneyGuard Alert: ${foundTrip.destination_name}`,
-              alertText
+              alertText,
+              selectedSound
             );
           }
 
@@ -201,7 +210,7 @@ export default function GuardianTrackingPage({
       isMounted = false;
       clearInterval(interval);
     };
-  }, [token, selectedThreshold]);
+  }, [token, selectedThreshold, selectedSound]);
 
   const destLat = trip?.destination_lat || 11.0168;
   const destLng = trip?.destination_lng || 76.9558;
@@ -266,6 +275,8 @@ export default function GuardianTrackingPage({
           isSharingActive={trip.status === "active"}
           shareUrl={shareUrl}
           speedKmh={null}
+          travellerName={trip.traveller_name}
+          travellerPhone={trip.traveller_phone}
         />
 
         {/* High-priority Arrival Alert Banner */}
@@ -283,13 +294,21 @@ export default function GuardianTrackingPage({
                   </p>
                 </div>
               </div>
-              <button
-                onClick={() => setActiveAlertBanner(null)}
-                className="text-xs text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800"
-                aria-label="Dismiss alert"
-              >
-                <X className="h-4 w-4" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setIsAlarmModalOpen(true)}
+                  className="px-3 py-1.5 rounded-xl bg-amber-500 text-slate-950 font-black text-xs hover:bg-amber-400 transition"
+                >
+                  View Actions
+                </button>
+                <button
+                  onClick={() => setActiveAlertBanner(null)}
+                  className="text-xs text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800"
+                  aria-label="Dismiss alert"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -301,9 +320,7 @@ export default function GuardianTrackingPage({
           startName={trip.start_name || undefined}
         />
 
-        {/* ========================================================================= */}
-        {/* SLIDING TAB BAR SELECTOR */}
-        {/* ========================================================================= */}
+        {/* Sliding Segmented Tab Bar */}
         <div className="p-1.5 rounded-2xl bg-slate-900/90 border border-slate-800 backdrop-blur-xl flex items-center gap-1 overflow-x-auto scrollbar-hide">
           <button
             type="button"
@@ -358,21 +375,17 @@ export default function GuardianTrackingPage({
           </button>
         </div>
 
-        {/* ========================================================================= */}
-        {/* SLIDING TAB CONTENT VIEWS */}
-        {/* ========================================================================= */}
+        {/* Sliding Tab Views */}
         <div className="transition-all duration-300">
-          {/* TAB 1: LIVE MAP & TELEMETRY */}
+          {/* TAB 1: LIVE MAP */}
           {activeTab === "map" && (
             <div className="space-y-4 animate-slide-in-right">
-              {/* GPS Status */}
               <LocationStatus
                 isSharingActive={trip.status === "active"}
                 lastUpdatedTimestamp={latestLocation?.recorded_at}
                 accuracyMeters={latestLocation?.accuracy}
               />
 
-              {/* Interactive Live Map */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-xs text-slate-400">
                   <span className="font-bold text-white flex items-center gap-1.5">
@@ -424,11 +437,13 @@ export default function GuardianTrackingPage({
                   requestNotificationPermission();
                 }}
                 triggeredThresholds={triggeredThresholds}
+                selectedSound={selectedSound}
+                onSelectSound={(snd) => setSelectedSound(snd)}
               />
             </div>
           )}
 
-          {/* TAB 4: TRIP PROGRESSION TIMELINE */}
+          {/* TAB 4: TRIP TIMELINE */}
           {activeTab === "timeline" && (
             <div className="animate-slide-in-left">
               <TripTimeline
@@ -442,7 +457,7 @@ export default function GuardianTrackingPage({
           )}
         </div>
 
-        {/* Sound & Notification Status Box (Persistent footer) */}
+        {/* Sound & Notification Status Box */}
         <div className="glass-panel rounded-3xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between text-xs gap-3">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-800 text-slate-300">
@@ -455,13 +470,13 @@ export default function GuardianTrackingPage({
             <div>
               <span className="font-bold text-slate-200 block">
                 {notificationEnabled
-                  ? "Audio Chime & Phone Notifications Armed"
+                  ? "Audio Siren & Phone Notifications Armed"
                   : "Audio Notifications Disabled"}
               </span>
               <span className="text-[11px] text-slate-400">
                 {notificationEnabled
                   ? "Leave this tab open on your phone or bedside table."
-                  : "Enable notifications so the app can wake you up when the traveller arrives."}
+                  : "Enable notifications so the loud alarm can wake you up when the traveller arrives."}
               </span>
             </div>
           </div>
@@ -472,24 +487,35 @@ export default function GuardianTrackingPage({
                 onClick={() => {
                   requestNotificationPermission().then((res) => {
                     setNotificationEnabled(res);
-                    playAlertChime();
+                    playAlertSound(selectedSound);
                   });
                 }}
                 className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition shadow-sm shrink-0"
               >
-                Enable Alarms
+                Enable Siren
               </button>
             ) : (
               <button
-                onClick={playAlertChime}
+                onClick={() => playAlertSound(selectedSound)}
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition shrink-0 border border-slate-700"
               >
                 <Volume2 className="h-4 w-4 text-cyan-400" />
-                <span>Test Alarm Chime</span>
+                <span>Test Alarm ({selectedSound})</span>
               </button>
             )}
           </div>
         </div>
+
+        {/* Fullscreen Emergency Alarm Siren Modal */}
+        <AlarmTriggerModal
+          isOpen={isAlarmModalOpen}
+          onClose={() => setIsAlarmModalOpen(false)}
+          remainingDistanceKm={currentDistanceKm}
+          destinationName={trip.destination_name}
+          travellerName={trip.traveller_name}
+          travellerPhone={trip.traveller_phone}
+          soundType={selectedSound}
+        />
       </main>
 
       <footer className="py-6 text-center text-xs text-slate-600">

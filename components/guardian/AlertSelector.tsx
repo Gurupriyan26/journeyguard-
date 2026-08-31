@@ -1,14 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { Bell, Volume2, CheckCircle2, Sliders, Moon, ShieldCheck } from "lucide-react";
-import { playAlertChime } from "@/lib/notifications";
+import { Bell, Volume2, CheckCircle2, Sliders, Moon, ShieldCheck, Music } from "lucide-react";
+import { playAlertSound, AlarmSoundType } from "@/lib/notifications";
 
 interface AlertSelectorProps {
   currentDistanceKm: number;
   selectedThreshold: number;
   onSelectThreshold: (km: number) => void;
   triggeredThresholds: number[];
+  selectedSound?: AlarmSoundType;
+  onSelectSound?: (sound: AlarmSoundType) => void;
 }
 
 const PRESET_THRESHOLDS = [
@@ -19,14 +21,30 @@ const PRESET_THRESHOLDS = [
   { km: 5, label: "5 km", desc: "Entering city / gate" },
 ];
 
+const SOUND_OPTIONS: Array<{ id: AlarmSoundType; label: string; icon: string }> = [
+  { id: "loud_siren", label: "🚨 Loud Siren (Piercing)", icon: "🚨" },
+  { id: "alarm_clock", label: "⏰ Digital Beep", icon: "⏰" },
+  { id: "fanfare", label: "🎺 Bugle Fanfare", icon: "🎺" },
+  { id: "gentle_chime", label: "🔔 Soft Chime", icon: "🔔" },
+];
+
 export default function AlertSelector({
   currentDistanceKm,
   selectedThreshold,
   onSelectThreshold,
   triggeredThresholds,
+  selectedSound = "loud_siren",
+  onSelectSound,
 }: AlertSelectorProps) {
   const [customVal, setCustomVal] = useState("");
   const [isCustom, setIsCustom] = useState(false);
+  const [activeSound, setActiveSound] = useState<AlarmSoundType>(selectedSound);
+
+  const handleSoundChange = (sound: AlarmSoundType) => {
+    setActiveSound(sound);
+    if (onSelectSound) onSelectSound(sound);
+    playAlertSound(sound); // Preview immediately
+  };
 
   const handleCustomSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,9 +56,9 @@ export default function AlertSelector({
   };
 
   return (
-    <div className="glass-panel-glow rounded-3xl p-5 sm:p-6 transition-all duration-300">
+    <div className="glass-panel-glow rounded-3xl p-5 sm:p-6 transition-all duration-300 space-y-5">
       {/* Reassuring Night Sleep Header */}
-      <div className="flex items-start justify-between gap-3 mb-4">
+      <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
             <Moon className="h-6 w-6" />
@@ -48,21 +66,21 @@ export default function AlertSelector({
           <div>
             <h3 className="text-base font-bold text-white flex items-center gap-2">
               <span>Night Sleep & Wake-Up Alarm</span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-300 border border-blue-500/20 font-semibold">
-                Loud Chime
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/40 font-bold">
+                Max Decibel
               </span>
             </h3>
             <p className="text-xs text-slate-400 mt-0.5">
-              Sleep peacefully. Your phone will ring automatically when your traveller reaches this distance.
+              Your phone will ring a loud siren when your traveller enters this radius.
             </p>
           </div>
         </div>
 
         <button
           type="button"
-          onClick={playAlertChime}
-          className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 text-xs font-bold transition shadow-sm shrink-0"
-          title="Test Alarm Chime"
+          onClick={() => playAlertSound(activeSound)}
+          className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-red-500/40 bg-red-500/10 hover:bg-red-500/20 text-red-300 text-xs font-black transition shadow-sm shrink-0"
+          title="Test Siren Sound"
         >
           <Volume2 className="h-4 w-4" />
           <span>Test Sound</span>
@@ -70,54 +88,84 @@ export default function AlertSelector({
       </div>
 
       {/* Preset selection grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-5 gap-2.5">
-        {PRESET_THRESHOLDS.map(({ km, label, desc }) => {
-          const isSelected = selectedThreshold === km;
-          const isTriggered = triggeredThresholds.includes(km);
-          const isPast = currentDistanceKm <= km;
+      <div>
+        <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
+          1. Choose Wake-Up Distance:
+        </label>
+        <div className="grid grid-cols-1 sm:grid-cols-5 gap-2.5">
+          {PRESET_THRESHOLDS.map(({ km, label, desc }) => {
+            const isSelected = selectedThreshold === km;
+            const isTriggered = triggeredThresholds.includes(km);
+            const isPast = currentDistanceKm <= km;
 
-          return (
-            <button
-              key={km}
-              type="button"
-              onClick={() => onSelectThreshold(km)}
-              className={`p-3.5 rounded-2xl text-left transition-all duration-200 border relative flex flex-col justify-between ${
-                isSelected
-                  ? "bg-gradient-to-b from-blue-600 to-blue-700 text-white border-blue-400 shadow-lg shadow-blue-500/25 ring-2 ring-blue-500/30 scale-[1.02]"
-                  : isTriggered
-                  ? "bg-emerald-950/40 text-emerald-300 border-emerald-500/40"
-                  : isPast
-                  ? "bg-slate-900/40 text-slate-400 border-slate-800"
-                  : "bg-slate-900/80 text-slate-300 border-slate-800 hover:border-slate-700 hover:bg-slate-800/80"
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="font-extrabold text-sm tracking-tight">{label}</span>
-                {isTriggered ? (
-                  <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
-                ) : isSelected ? (
-                  <span className="h-2.5 w-2.5 rounded-full bg-white animate-pulse" />
-                ) : null}
-              </div>
-
-              <span
-                className={`text-[11px] mt-2 leading-tight block ${
+            return (
+              <button
+                key={km}
+                type="button"
+                onClick={() => onSelectThreshold(km)}
+                className={`p-3.5 rounded-2xl text-left transition-all duration-200 border relative flex flex-col justify-between ${
                   isSelected
-                    ? "text-blue-100 font-semibold"
+                    ? "bg-gradient-to-b from-blue-600 to-blue-700 text-white border-blue-400 shadow-lg shadow-blue-500/25 ring-2 ring-blue-500/30 scale-[1.02]"
                     : isTriggered
-                    ? "text-emerald-400 font-medium"
-                    : "text-slate-400"
+                    ? "bg-emerald-950/40 text-emerald-300 border-emerald-500/40"
+                    : isPast
+                    ? "bg-slate-900/40 text-slate-400 border-slate-800"
+                    : "bg-slate-900/80 text-slate-300 border-slate-800 hover:border-slate-700 hover:bg-slate-800/80"
                 }`}
               >
-                {isTriggered ? "Triggered" : isPast ? "Within radius" : desc}
-              </span>
-            </button>
-          );
-        })}
+                <div className="flex items-center justify-between">
+                  <span className="font-extrabold text-sm tracking-tight">{label}</span>
+                  {isTriggered ? (
+                    <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+                  ) : isSelected ? (
+                    <span className="h-2.5 w-2.5 rounded-full bg-white animate-pulse" />
+                  ) : null}
+                </div>
+
+                <span
+                  className={`text-[11px] mt-2 leading-tight block ${
+                    isSelected
+                      ? "text-blue-100 font-semibold"
+                      : isTriggered
+                      ? "text-emerald-400 font-medium"
+                      : "text-slate-400"
+                  }`}
+                >
+                  {isTriggered ? "Triggered" : isPast ? "Within radius" : desc}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      {/* Footer info & custom distance */}
-      <div className="mt-4 pt-3.5 border-t border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+      {/* Alarm Tone Selector */}
+      <div className="pt-2 border-t border-slate-800/80">
+        <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center justify-between">
+          <span>2. Choose Alarm Sound Tone:</span>
+          <span className="text-[10px] text-cyan-400 font-normal">Tap to preview sound</span>
+        </label>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {SOUND_OPTIONS.map((snd) => (
+            <button
+              key={snd.id}
+              type="button"
+              onClick={() => handleSoundChange(snd.id)}
+              className={`p-2.5 rounded-xl border text-left text-xs font-bold transition flex items-center gap-2 ${
+                activeSound === snd.id
+                  ? "bg-gradient-to-r from-red-600/90 to-amber-600/90 text-white border-red-400 shadow-md"
+                  : "bg-slate-900/80 hover:bg-slate-800 text-slate-300 border-slate-800"
+              }`}
+            >
+              <span>{snd.icon}</span>
+              <span className="truncate">{snd.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Custom Distance footer */}
+      <div className="pt-3 border-t border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
         {!isCustom ? (
           <button
             type="button"

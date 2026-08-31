@@ -9,6 +9,8 @@ export interface Profile {
 export interface Trip {
   id: string;
   traveller_id?: string | null;
+  traveller_name?: string | null;
+  traveller_phone?: string | null;
   start_lat: number;
   start_lng: number;
   start_name?: string | null;

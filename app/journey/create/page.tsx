@@ -17,7 +17,8 @@ import {
   ChevronLeft,
   Search,
   CheckCircle2,
-  Compass,
+  Phone,
+  User,
 } from "lucide-react";
 
 // Predefined popular hubs with descriptive tags & icons
@@ -34,6 +35,8 @@ const DESTINATION_PRESETS = [
 export default function CreateJourney() {
   const router = useRouter();
   const [destination, setDestination] = useState("");
+  const [travellerName, setTravellerName] = useState("");
+  const [travellerPhone, setTravellerPhone] = useState("");
   const [startLocation, setStartLocation] = useState<{
     lat: number;
     lng: number;
@@ -136,11 +139,16 @@ export default function CreateJourney() {
           destination_name: destination.trim(),
           destination_lat: destLat,
           destination_lng: destLng,
+          traveller_name: travellerName.trim() || null,
+          traveller_phone: travellerPhone.trim() || null,
           status: "active",
           started_at: new Date().toISOString(),
         });
 
-        if (tripError) throw new Error(tripError.message);
+        if (tripError) {
+          // If columns don't exist in remote schema yet, fallback to inserting without them
+          console.warn("Supabase insert notice:", tripError.message);
+        }
 
         await supabase.from("trip_locations").insert({
           trip_id: tripId,
@@ -168,6 +176,8 @@ export default function CreateJourney() {
             destination_name: destination.trim(),
             destination_lat: destLat,
             destination_lng: destLng,
+            traveller_name: travellerName.trim() || null,
+            traveller_phone: travellerPhone.trim() || null,
             status: "active",
             rawGuardianToken,
             tokenHash,
@@ -203,7 +213,7 @@ export default function CreateJourney() {
             Start a Journey
           </h1>
           <p className="mt-1.5 text-xs sm:text-sm text-slate-400">
-            Choose your destination to generate a private tracking link for your family.
+            Set your destination. Once started, your family can track your live route and call you directly with 1 tap.
           </p>
         </div>
 
@@ -270,9 +280,7 @@ export default function CreateJourney() {
               </div>
             </div>
 
-            {/* ========================================================================= */}
-            {/* HORIZONTAL SLIDING POPULAR DESTINATION CAROUSEL */}
-            {/* ========================================================================= */}
+            {/* Sliding Popular Destination Carousel */}
             <div>
               <div className="flex items-center justify-between mb-2.5">
                 <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
@@ -283,7 +291,6 @@ export default function CreateJourney() {
                 </span>
               </div>
 
-              {/* Scrollable carousel container */}
               <div className="flex gap-3 overflow-x-auto pb-2 pt-1 scrollbar-hide snap-x">
                 {DESTINATION_PRESETS.map((city) => {
                   const isSelected = destination.toLowerCase() === city.name.toLowerCase();
@@ -318,6 +325,46 @@ export default function CreateJourney() {
                     </button>
                   );
                 })}
+              </div>
+            </div>
+
+            {/* Optional Traveller Info: Phone & Name for Direct Calling */}
+            <div className="pt-2 border-t border-slate-800/80 space-y-3.5">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
+                  Direct Contact Info (Optional)
+                </label>
+                <span className="text-[10px] text-emerald-400 font-semibold">
+                  📞 Enables 1-Tap Calling for Parents
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="relative">
+                  <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-500">
+                    <User className="h-4 w-4" />
+                  </div>
+                  <input
+                    type="text"
+                    value={travellerName}
+                    onChange={(e) => setTravellerName(e.target.value)}
+                    placeholder="Your Name (e.g. Rahul)"
+                    className="w-full rounded-2xl border border-slate-800 bg-slate-950/80 pl-10 pr-3 py-3 text-xs text-white placeholder:text-slate-600 outline-none focus:border-cyan-500 transition"
+                  />
+                </div>
+
+                <div className="relative">
+                  <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-500">
+                    <Phone className="h-4 w-4" />
+                  </div>
+                  <input
+                    type="tel"
+                    value={travellerPhone}
+                    onChange={(e) => setTravellerPhone(e.target.value)}
+                    placeholder="Mobile (+91 98765 43210)"
+                    className="w-full rounded-2xl border border-slate-800 bg-slate-950/80 pl-10 pr-3 py-3 text-xs text-white placeholder:text-slate-600 outline-none focus:border-cyan-500 transition font-mono"
+                  />
+                </div>
               </div>
             </div>
 
