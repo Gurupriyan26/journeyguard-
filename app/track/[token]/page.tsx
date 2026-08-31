@@ -87,72 +87,103 @@ export default function GuardianTrackingPage({
         let foundTrip: Trip | null = null;
         let foundLocation: TripLocation | null = null;
 
-        // 1. Try local cache / session storage first
+        // 1. Try local cache (sessionStorage and localStorage)
         if (typeof window !== "undefined") {
-          for (let i = 0; i < sessionStorage.length; i++) {
-            const key = sessionStorage.key(i);
-            if (key && key.startsWith("jg_trip_")) {
+          const checkStorage = (storage: Storage) => {
+            // Check direct token mapping
+            const mappedId = storage.getItem(`jg_token_${token}`);
+            if (mappedId) {
+              const mappedTrip = storage.getItem(`jg_trip_${mappedId}`);
+              if (mappedTrip) {
+                try {
+                  return JSON.parse(mappedTrip);
+                } catch {}
+              }
+            }
+
+            // Check direct tripId
+            const directTrip = storage.getItem(`jg_trip_${token}`);
+            if (directTrip) {
               try {
-                const item = JSON.parse(sessionStorage.getItem(key) || "{}");
-                if (item.rawGuardianToken === token || item.id === token) {
-                  foundTrip = item;
-                  if (item.start_lat && item.start_lng) {
-                    foundLocation = {
-                      id: "init",
-                      trip_id: item.id,
-                      latitude: item.start_lat,
-                      longitude: item.start_lng,
-                      accuracy: 10,
-                      speed_kmh: 62,
-                      battery_level: 84,
-                      is_charging: true,
-                      recorded_at: new Date().toISOString(),
-                    };
-                  }
-                  break;
-                }
+                return JSON.parse(directTrip);
               } catch {}
+            }
+
+            // Scan all stored trips
+            for (let i = 0; i < storage.length; i++) {
+              const key = storage.key(i);
+              if (key && key.startsWith("jg_trip_")) {
+                try {
+                  const item = JSON.parse(storage.getItem(key) || "{}");
+                  if (item.rawGuardianToken === token || item.id === token) {
+                    return item;
+                  }
+                } catch {}
+              }
+            }
+            return null;
+          };
+
+          const localFound = checkStorage(sessionStorage) || checkStorage(localStorage);
+          if (localFound) {
+            foundTrip = localFound;
+            if (localFound.start_lat && localFound.start_lng) {
+              foundLocation = {
+                id: "init",
+                trip_id: localFound.id,
+                latitude: localFound.start_lat,
+                longitude: localFound.start_lng,
+                accuracy: 10,
+                speed_kmh: 62,
+                battery_level: 84,
+                is_charging: true,
+                recorded_at: new Date().toISOString(),
+              };
             }
           }
         }
 
-        // 2. Query Supabase using token hash
+        // 2. Query Supabase using token hash OR direct ID
         if (isSupabaseConfigured && supabase) {
-          const tokenHash = await hashToken(token);
+          try {
+            const tokenHash = await hashToken(token);
 
-          const { data: accessData } = await supabase
-            .from("guardian_access")
-            .select("trip_id, expires_at")
-            .eq("access_token_hash", tokenHash)
-            .limit(1);
-
-          let targetTripId = accessData && accessData.length > 0 ? accessData[0].trip_id : null;
-
-          if (!targetTripId && token.length === 36) {
-            targetTripId = token;
-          }
-
-          if (targetTripId) {
-            const { data: tripData } = await supabase
-              .from("trips")
-              .select("*")
-              .eq("id", targetTripId)
-              .single();
-
-            if (tripData) {
-              foundTrip = tripData;
-            }
-
-            const { data: locData } = await supabase
-              .from("trip_locations")
-              .select("*")
-              .eq("trip_id", targetTripId)
-              .order("recorded_at", { ascending: false })
+            const { data: accessData } = await supabase
+              .from("guardian_access")
+              .select("trip_id, expires_at")
+              .eq("access_token_hash", tokenHash)
               .limit(1);
 
-            if (locData && locData.length > 0) {
-              foundLocation = locData[0];
+            let targetTripId = accessData && accessData.length > 0 ? accessData[0].trip_id : null;
+
+            if (!targetTripId && (token.length === 36 || foundTrip?.id)) {
+              targetTripId = token.length === 36 ? token : foundTrip?.id;
             }
+
+            if (targetTripId) {
+              const { data: tripData } = await supabase
+                .from("trips")
+                .select("*")
+                .eq("id", targetTripId)
+                .single();
+
+              if (tripData) {
+                foundTrip = tripData;
+              }
+
+              const { data: locData } = await supabase
+                .from("trip_locations")
+                .select("*")
+                .eq("trip_id", targetTripId)
+                .order("recorded_at", { ascending: false })
+                .limit(1);
+
+              if (locData && locData.length > 0) {
+                foundLocation = locData[0];
+              }
+            }
+          } catch (err) {
+            console.warn("Supabase tracking fetch notice:", err);
           }
         }
 

@@ -173,27 +173,32 @@ export default function CreateJourney() {
         });
       }
 
+      const tripRecord = {
+        id: tripId,
+        start_lat: sLat,
+        start_lng: sLng,
+        start_name: sName,
+        destination_name: destination.trim(),
+        destination_lat: destLat,
+        destination_lng: destLng,
+        traveller_name: travellerName.trim() || null,
+        traveller_phone: travellerPhone.trim() || null,
+        default_threshold_km: defaultThresholdKm,
+        status: "active",
+        rawGuardianToken,
+        tokenHash,
+        expiresAt,
+        started_at: new Date().toISOString(),
+      };
+
       if (typeof window !== "undefined") {
-        sessionStorage.setItem(
-          `jg_trip_${tripId}`,
-          JSON.stringify({
-            id: tripId,
-            start_lat: sLat,
-            start_lng: sLng,
-            start_name: sName,
-            destination_name: destination.trim(),
-            destination_lat: destLat,
-            destination_lng: destLng,
-            traveller_name: travellerName.trim() || null,
-            traveller_phone: travellerPhone.trim() || null,
-            default_threshold_km: defaultThresholdKm,
-            status: "active",
-            rawGuardianToken,
-            tokenHash,
-            expiresAt,
-            started_at: new Date().toISOString(),
-          })
-        );
+        try {
+          sessionStorage.setItem(`jg_trip_${tripId}`, JSON.stringify(tripRecord));
+          localStorage.setItem(`jg_trip_${tripId}`, JSON.stringify(tripRecord));
+          localStorage.setItem(`jg_token_${rawGuardianToken}`, tripId);
+        } catch (e) {
+          console.warn("Storage write error:", e);
+        }
       }
 
       router.push(`/journey/${tripId}`);

@@ -10,6 +10,8 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 CREATE TABLE IF NOT EXISTS public.trips (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   traveller_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  traveller_name TEXT,
+  traveller_phone TEXT,
   start_lat DOUBLE PRECISION NOT NULL,
   start_lng DOUBLE PRECISION NOT NULL,
   start_name TEXT,
@@ -22,14 +24,28 @@ CREATE TABLE IF NOT EXISTS public.trips (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Alter existing trips table in case it was created earlier
+ALTER TABLE public.trips ADD COLUMN IF NOT EXISTS traveller_name TEXT;
+ALTER TABLE public.trips ADD COLUMN IF NOT EXISTS traveller_phone TEXT;
+
 CREATE TABLE IF NOT EXISTS public.trip_locations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   trip_id UUID NOT NULL REFERENCES public.trips(id) ON DELETE CASCADE,
   latitude DOUBLE PRECISION NOT NULL,
   longitude DOUBLE PRECISION NOT NULL,
   accuracy DOUBLE PRECISION,
+  speed_kmh DOUBLE PRECISION,
+  heading DOUBLE PRECISION,
+  battery_level INTEGER,
+  is_charging BOOLEAN,
   recorded_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Alter existing trip_locations table in case it was created earlier
+ALTER TABLE public.trip_locations ADD COLUMN IF NOT EXISTS speed_kmh DOUBLE PRECISION;
+ALTER TABLE public.trip_locations ADD COLUMN IF NOT EXISTS heading DOUBLE PRECISION;
+ALTER TABLE public.trip_locations ADD COLUMN IF NOT EXISTS battery_level INTEGER;
+ALTER TABLE public.trip_locations ADD COLUMN IF NOT EXISTS is_charging BOOLEAN;
 
 CREATE TABLE IF NOT EXISTS public.guardian_access (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -70,14 +86,12 @@ ALTER TABLE public.guardian_access ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.trip_alerts ENABLE ROW LEVEL SECURITY;
 
 -- 4. RLS Policies
--- Profiles: Users can insert and read their profile
 CREATE POLICY "Allow public insert profiles" ON public.profiles
   FOR INSERT WITH CHECK (true);
 
 CREATE POLICY "Allow select profiles" ON public.profiles
   FOR SELECT USING (true);
 
--- Trips: Created openly or by authenticated traveller; publicly readable if active for sharing validation
 CREATE POLICY "Allow insert trips" ON public.trips
   FOR INSERT WITH CHECK (true);
 
@@ -87,21 +101,18 @@ CREATE POLICY "Allow read active trips" ON public.trips
 CREATE POLICY "Allow update own trips" ON public.trips
   FOR UPDATE USING (true);
 
--- Trip Locations: Insert allowed for active trips; readable for active trips
 CREATE POLICY "Allow insert trip locations" ON public.trip_locations
   FOR INSERT WITH CHECK (true);
 
 CREATE POLICY "Allow select trip locations" ON public.trip_locations
   FOR SELECT USING (true);
 
--- Guardian Access: Token records insertion and lookup by token hash
 CREATE POLICY "Allow insert guardian access" ON public.guardian_access
   FOR INSERT WITH CHECK (true);
 
 CREATE POLICY "Allow select guardian access" ON public.guardian_access
   FOR SELECT USING (true);
 
--- Trip Alerts: Insert and read alerts
 CREATE POLICY "Allow insert trip alerts" ON public.trip_alerts
   FOR INSERT WITH CHECK (true);
 

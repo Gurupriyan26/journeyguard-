@@ -7,11 +7,12 @@ import Navbar from "@/components/common/Navbar";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase/client";
 import { BrowserLocationProvider, LocationReading } from "@/lib/location/browserLocationProvider";
 import { calculateDistanceKm } from "@/lib/distance";
-import { requestScreenWakeLock, releaseScreenWakeLock, isWakeLockActive } from "@/lib/wakelock";
+import { requestScreenWakeLock, releaseScreenWakeLock } from "@/lib/wakelock";
 import JourneyMap from "@/components/maps/JourneyMap";
 import DistanceCard from "@/components/journey/DistanceCard";
 import LocationStatus from "@/components/journey/LocationStatus";
 import BatterySpeedCard from "@/components/journey/BatterySpeedCard";
+import GuardianShareCard from "@/components/journey/GuardianShareCard";
 import ShareModal from "@/components/journey/ShareModal";
 import { Trip } from "@/types/journey";
 import {
@@ -23,7 +24,6 @@ import {
   ArrowLeft,
   Sliders,
   Sun,
-  Moon,
   Zap,
 } from "lucide-react";
 
@@ -59,22 +59,28 @@ export default function ActiveJourneyPage({
     }
   };
 
-  // 2. Load Trip Data
+  // 2. Load Trip Data from Storage or Supabase
   useEffect(() => {
     async function loadTrip() {
+      let foundTrip: any = null;
+
       if (typeof window !== "undefined") {
-        const cached = sessionStorage.getItem(`jg_trip_${tripId}`);
-        if (cached) {
+        // Try sessionStorage first, then localStorage
+        const sessionCached = sessionStorage.getItem(`jg_trip_${tripId}`);
+        const localCached = localStorage.getItem(`jg_trip_${tripId}`);
+        const rawCached = sessionCached || localCached;
+
+        if (rawCached) {
           try {
-            const parsed = JSON.parse(cached);
-            setTrip(parsed);
-            if (parsed.rawGuardianToken) {
-              setShareToken(parsed.rawGuardianToken);
+            foundTrip = JSON.parse(rawCached);
+            setTrip(foundTrip);
+            if (foundTrip.rawGuardianToken) {
+              setShareToken(foundTrip.rawGuardianToken);
             }
-            if (parsed.start_lat && parsed.start_lng) {
+            if (foundTrip.start_lat && foundTrip.start_lng) {
               setCurrentLocation({
-                latitude: parsed.start_lat,
-                longitude: parsed.start_lng,
+                latitude: foundTrip.start_lat,
+                longitude: foundTrip.start_lng,
                 accuracy: 10,
                 timestamp: Date.now(),
               });
@@ -86,30 +92,38 @@ export default function ActiveJourneyPage({
       }
 
       if (isSupabaseConfigured && supabase) {
-        const { data, error } = await supabase
-          .from("trips")
-          .select("*")
-          .eq("id", tripId)
-          .single();
+        try {
+          const { data, error } = await supabase
+            .from("trips")
+            .select("*")
+            .eq("id", tripId)
+            .single();
 
-        if (data && !error) {
-          setTrip(data);
-        }
+          if (data && !error) {
+            setTrip((prev) => ({ ...prev, ...data }));
+          }
 
-        const { data: locData } = await supabase
-          .from("trip_locations")
-          .select("*")
-          .eq("trip_id", tripId)
-          .order("recorded_at", { ascending: false })
-          .limit(1);
+          const { data: locData } = await supabase
+            .from("trip_locations")
+            .select("*")
+            .eq("trip_id", tripId)
+            .order("recorded_at", { ascending: false })
+            .limit(1);
 
-        if (locData && locData.length > 0) {
-          setCurrentLocation({
-            latitude: locData[0].latitude,
-            longitude: locData[0].longitude,
-            accuracy: locData[0].accuracy,
-            timestamp: new Date(locData[0].recorded_at).getTime(),
-          });
+          if (locData && locData.length > 0) {
+            setCurrentLocation({
+              latitude: locData[0].latitude,
+              longitude: locData[0].longitude,
+              accuracy: locData[0].accuracy,
+              speed_kmh: locData[0].speed_kmh,
+              heading: locData[0].heading,
+              battery_level: locData[0].battery_level,
+              is_charging: locData[0].is_charging,
+              timestamp: new Date(locData[0].recorded_at).getTime(),
+            });
+          }
+        } catch (err) {
+          console.warn("Supabase query notice:", err);
         }
       }
     }
@@ -134,7 +148,7 @@ export default function ActiveJourneyPage({
 
     const provider = new BrowserLocationProvider({
       enableHighAccuracy: true,
-      minIntervalMs: 2500, // Zero-lag fast 2.5s streaming
+      minIntervalMs: 2500, // 2.5s streaming
     });
     locationProviderRef.current = provider;
 
@@ -149,6 +163,10 @@ export default function ActiveJourneyPage({
               latitude: reading.latitude,
               longitude: reading.longitude,
               accuracy: reading.accuracy,
+              speed_kmh: reading.speed_kmh,
+              heading: reading.heading,
+              battery_level: reading.battery_level,
+              is_charging: reading.is_charging,
               recorded_at: new Date(reading.timestamp).toISOString(),
             });
           } catch (err) {
@@ -221,7 +239,7 @@ export default function ActiveJourneyPage({
       longitude: newLng,
       accuracy: 8,
       timestamp: Date.now(),
-      speed: 18.0, // ~65 km/h
+      speed: 18.0,
       speed_kmh: 65,
       battery_level: 82,
       is_charging: true,
@@ -235,6 +253,9 @@ export default function ActiveJourneyPage({
         latitude: simulatedReading.latitude,
         longitude: simulatedReading.longitude,
         accuracy: simulatedReading.accuracy,
+        speed_kmh: 65,
+        battery_level: 82,
+        is_charging: true,
         recorded_at: new Date().toISOString(),
       });
     }
@@ -242,9 +263,11 @@ export default function ActiveJourneyPage({
 
   const getShareUrl = () => {
     if (typeof window === "undefined") return "";
-    const token = shareToken || tripId;
+    const token = shareToken || (trip as any)?.rawGuardianToken || tripId;
     return `${window.location.origin}/track/${token}`;
   };
+
+  const currentShareUrl = getShareUrl();
 
   return (
     <div className="min-h-screen bg-[#030712] text-slate-100 flex flex-col justify-between">
@@ -312,6 +335,13 @@ export default function ActiveJourneyPage({
           </div>
         </div>
 
+        {/* PROMINENT GUARDIAN SHARE LINK CARD (Always visible!) */}
+        <GuardianShareCard
+          shareUrl={currentShareUrl}
+          destinationName={trip?.destination_name || "Destination"}
+          travellerName={trip?.traveller_name}
+        />
+
         {/* Location Status Badge */}
         <LocationStatus
           isSharingActive={isSharingActive}
@@ -335,25 +365,6 @@ export default function ActiveJourneyPage({
           startName={trip?.start_name || "Origin"}
           speedKmh={currentLocation?.speed_kmh}
         />
-
-        {/* Primary Action Buttons */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <button
-            onClick={() => setIsShareModalOpen(true)}
-            className="w-full py-4 px-4 rounded-2xl bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-black text-sm transition flex items-center justify-center gap-2 shadow-xl shadow-blue-500/25"
-          >
-            <Share2 className="h-4 w-4" />
-            <span>Share Guardian Link</span>
-          </button>
-
-          <button
-            onClick={handleEndJourney}
-            className="w-full py-4 px-4 rounded-2xl border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 font-black text-sm transition flex items-center justify-center gap-2"
-          >
-            <Square className="h-4 w-4" />
-            <span>Stop & End Trip</span>
-          </button>
-        </div>
 
         {/* Interactive Live Map with Satellite Switcher */}
         <div className="space-y-2">
@@ -421,7 +432,7 @@ export default function ActiveJourneyPage({
         <ShareModal
           isOpen={isShareModalOpen}
           onClose={() => setIsShareModalOpen(false)}
-          shareUrl={getShareUrl()}
+          shareUrl={currentShareUrl}
           destinationName={trip?.destination_name || "Destination"}
         />
       </main>
