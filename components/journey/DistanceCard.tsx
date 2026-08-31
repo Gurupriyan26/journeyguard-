@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { Clock, Navigation, Gauge, MapPin } from "lucide-react";
 
 interface DistanceCardProps {
@@ -22,12 +23,18 @@ export default function DistanceCard({
   const estimatedHours = Math.floor(remainingDistanceKm / effectiveSpeed);
   const estimatedMinutes = Math.round((remainingDistanceKm % effectiveSpeed) * (60 / effectiveSpeed));
 
-  // Compute calculated arrival time
-  const arrivalTime = new Date(Date.now() + (estimatedHours * 60 + estimatedMinutes) * 60 * 1000);
-  const formattedArrivalTime = arrivalTime.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  // Compute calculated arrival time safely after client mount to prevent SSR hydration mismatches
+  const [formattedArrivalTime, setFormattedArrivalTime] = useState<string>("");
+
+  useEffect(() => {
+    const arrivalTime = new Date(Date.now() + (estimatedHours * 60 + estimatedMinutes) * 60 * 1000);
+    setFormattedArrivalTime(
+      arrivalTime.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    );
+  }, [estimatedHours, estimatedMinutes]);
 
   // Calculate progress percentage
   const total = totalDistanceKm && totalDistanceKm > remainingDistanceKm ? totalDistanceKm : remainingDistanceKm + 30;
@@ -112,7 +119,7 @@ export default function DistanceCard({
               ETA (Clock)
             </span>
             <span className="text-xs font-bold text-indigo-200">
-              ~{formattedArrivalTime}
+              {formattedArrivalTime ? `~${formattedArrivalTime}` : "--:--"}
             </span>
           </div>
         </div>
