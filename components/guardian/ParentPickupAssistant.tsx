@@ -41,7 +41,7 @@ export default function ParentPickupAssistant({
     );
   }, [travelMinsRemaining, prepBufferMins]);
 
-  const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${destinationLat},${destinationLng}`;
+  const googleMapsUrl = `https://www.google.com/maps/dir/?destination=${destinationLat},${destinationLng}`;
 
   return (
     <div className="glass-panel-glow rounded-3xl p-5 sm:p-6 transition-all duration-300">

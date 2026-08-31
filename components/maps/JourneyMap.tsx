@@ -2,9 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import "leaflet/dist/leaflet.css";
-import { Maximize2, Layers, Satellite, Map as MapIcon, Moon } from "lucide-react";
+import { Maximize2, Satellite, Map as MapIcon, Compass, ShieldCheck } from "lucide-react";
 
-export type MapLayerStyle = "dark" | "satellite" | "street";
+export type MapLayerStyle = "street" | "satellite" | "transit";
 
 interface JourneyMapProps {
   travellerPos?: { lat: number; lng: number } | null;
@@ -13,21 +13,28 @@ interface JourneyMapProps {
   className?: string;
 }
 
-const TILE_LAYERS: Record<MapLayerStyle, { url: string; maxZoom: number; attribution: string }> = {
-  dark: {
-    url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+// 100% Free, Open & Public Tile Providers - NO API KEY REQUIRED EVER
+const TILE_LAYERS: Record<MapLayerStyle, { url: string; maxZoom: number; label: string; attribution: string; icon: string }> = {
+  street: {
+    url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
     maxZoom: 19,
-    attribution: "CartoDB Voyager",
+    label: "Street Map",
+    attribution: "© OpenStreetMap (Free, No API Key)",
+    icon: "🗺️",
   },
   satellite: {
     url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
     maxZoom: 18,
-    attribution: "Esri / ArcGIS Satellite",
+    label: "Satellite",
+    attribution: "© Esri World Imagery (Free)",
+    icon: "🛰️",
   },
-  street: {
-    url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+  transit: {
+    url: "https://tile.openstreetmap.fr/hot/{z}/{x}/{y}.png",
     maxZoom: 19,
-    attribution: "OpenStreetMap",
+    label: "High Contrast",
+    attribution: "© OSM Humanitarian (Free)",
+    icon: "🛣️",
   },
 };
 
@@ -42,9 +49,9 @@ export default function JourneyMap({
   const tileLayerRef = useRef<any>(null);
   const markersRef = useRef<{ traveller?: any; destination?: any; line?: any }>({});
   const [mapLoaded, setMapLoaded] = useState(false);
-  const [activeLayer, setActiveLayer] = useState<MapLayerStyle>("dark");
+  const [activeLayer, setActiveLayer] = useState<MapLayerStyle>("street");
 
-  // Switch tile layer dynamically
+  // Switch tile layer dynamically without reloading map
   const switchLayer = (style: MapLayerStyle) => {
     setActiveLayer(style);
     if (!mapInstanceRef.current) return;
@@ -55,13 +62,12 @@ export default function JourneyMap({
       }
       const newTile = L.tileLayer(TILE_LAYERS[style].url, {
         maxZoom: TILE_LAYERS[style].maxZoom,
-        subdomains: "abcd",
       }).addTo(mapInstanceRef.current);
       tileLayerRef.current = newTile;
     });
   };
 
-  // Recenter helper
+  // Recenter helper to fit both traveller and destination in view
   const handleRecenter = () => {
     if (!mapInstanceRef.current) return;
     if (travellerPos && destinationPos) {
@@ -99,10 +105,9 @@ export default function JourneyMap({
 
       mapInstanceRef.current = map;
 
-      // Base tile layer
+      // Base 100% Free OpenStreetMap tile layer (NO API KEY REQUIRED)
       const baseTile = L.tileLayer(TILE_LAYERS[activeLayer].url, {
         maxZoom: TILE_LAYERS[activeLayer].maxZoom,
-        subdomains: "abcd",
       }).addTo(map);
       tileLayerRef.current = baseTile;
 
@@ -149,7 +154,7 @@ export default function JourneyMap({
 
       markersRef.current.destination = destMarker;
 
-      // Add Traveller marker & Polyline
+      // Add Traveller marker & Route Polyline
       if (travellerPos) {
         const travMarker = L.marker([travellerPos.lat, travellerPos.lng], {
           icon: travellerIcon,
@@ -168,7 +173,7 @@ export default function JourneyMap({
             [destinationPos.lat, destinationPos.lng],
           ],
           {
-            color: "#38bdf8",
+            color: "#0284c7",
             weight: 4,
             opacity: 0.9,
             dashArray: "8, 8",
@@ -220,45 +225,22 @@ export default function JourneyMap({
       {mapLoaded && (
         <>
           {/* Layer switcher pill on top left */}
-          <div className="absolute top-3 left-3 z-[400] flex items-center p-1 rounded-2xl bg-slate-950/85 backdrop-blur-md border border-slate-800 shadow-xl">
-            <button
-              type="button"
-              onClick={() => switchLayer("dark")}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-bold transition ${
-                activeLayer === "dark"
-                  ? "bg-blue-600 text-white shadow-sm"
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              <Moon className="h-3 w-3" />
-              <span>Dark</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => switchLayer("satellite")}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-bold transition ${
-                activeLayer === "satellite"
-                  ? "bg-cyan-600 text-white shadow-sm"
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              <Satellite className="h-3 w-3" />
-              <span>Satellite</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => switchLayer("street")}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-bold transition ${
-                activeLayer === "street"
-                  ? "bg-slate-700 text-white shadow-sm"
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              <MapIcon className="h-3 w-3" />
-              <span>Street</span>
-            </button>
+          <div className="absolute top-3 left-3 z-[400] flex items-center p-1 rounded-2xl bg-slate-950/90 backdrop-blur-md border border-slate-800 shadow-xl">
+            {(["street", "satellite", "transit"] as MapLayerStyle[]).map((style) => (
+              <button
+                key={style}
+                type="button"
+                onClick={() => switchLayer(style)}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-bold transition ${
+                  activeLayer === style
+                    ? "bg-blue-600 text-white shadow-sm"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                <span>{TILE_LAYERS[style].icon}</span>
+                <span>{TILE_LAYERS[style].label}</span>
+              </button>
+            ))}
           </div>
 
           {/* Recenter button on top right */}
@@ -266,7 +248,7 @@ export default function JourneyMap({
             <button
               type="button"
               onClick={handleRecenter}
-              className="flex h-9 w-9 items-center justify-center rounded-2xl bg-slate-950/85 text-slate-200 hover:text-white border border-slate-800 shadow-xl backdrop-blur-md transition hover:bg-slate-800"
+              className="flex h-9 w-9 items-center justify-center rounded-2xl bg-slate-950/90 text-slate-200 hover:text-white border border-slate-800 shadow-xl backdrop-blur-md transition hover:bg-slate-800"
               title="Fit Full Route"
             >
               <Maximize2 className="h-4 w-4" />
@@ -275,9 +257,10 @@ export default function JourneyMap({
         </>
       )}
 
-      {/* Map attribution tag */}
-      <div className="absolute bottom-2 left-2 z-[400] px-2 py-0.5 rounded-md bg-slate-950/80 backdrop-blur-sm text-[9px] font-mono text-slate-400 border border-slate-800 pointer-events-none">
-        {TILE_LAYERS[activeLayer].attribution}
+      {/* Free OpenStreetMap Attribution Tag */}
+      <div className="absolute bottom-2 left-2 z-[400] px-2.5 py-1 rounded-lg bg-slate-950/85 backdrop-blur-sm text-[10px] font-medium text-slate-300 border border-slate-800/80 pointer-events-none flex items-center gap-1.5">
+        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+        <span>{TILE_LAYERS[activeLayer].attribution}</span>
       </div>
     </div>
   );
