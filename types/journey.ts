@@ -18,6 +18,7 @@ export interface Trip {
   destination_lat: number;
   destination_lng: number;
   status: TripStatus;
+  default_threshold_km?: number;
   started_at: string;
   ended_at?: string | null;
   created_at: string;
@@ -29,12 +30,18 @@ export interface TripLocation {
   latitude: number;
   longitude: number;
   accuracy?: number | null;
+  speed_kmh?: number | null;
+  heading?: number | null;
+  battery_level?: number | null;
+  is_charging?: boolean | null;
   recorded_at: string;
 }
 
 export interface GuardianAccess {
   id: string;
   trip_id: string;
+  guardian_role?: string | null; // e.g. "Mom", "Dad", "Family"
+  custom_threshold_km?: number | null;
   access_token_hash: string;
   expires_at: string;
   created_at: string;

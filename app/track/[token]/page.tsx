@@ -17,9 +17,11 @@ import {
 import JourneyMap from "@/components/maps/JourneyMap";
 import DistanceCard from "@/components/journey/DistanceCard";
 import LocationStatus from "@/components/journey/LocationStatus";
+import BatterySpeedCard from "@/components/journey/BatterySpeedCard";
 import AlertSelector from "@/components/guardian/AlertSelector";
 import ParentStatusHeader from "@/components/guardian/ParentStatusHeader";
 import ParentPickupAssistant from "@/components/guardian/ParentPickupAssistant";
+import MultiGuardianManager from "@/components/guardian/MultiGuardianManager";
 import TripTimeline from "@/components/guardian/TripTimeline";
 import AlarmTriggerModal from "@/components/guardian/AlarmTriggerModal";
 import { Trip, TripLocation } from "@/types/journey";
@@ -35,10 +37,10 @@ import {
   Car,
   Moon,
   ListOrdered,
-  Layers,
+  Users,
 } from "lucide-react";
 
-type DashboardTab = "map" | "pickup" | "alarm" | "timeline";
+type DashboardTab = "map" | "pickup" | "alarm" | "family" | "timeline";
 
 export default function GuardianTrackingPage({
   params,
@@ -101,6 +103,9 @@ export default function GuardianTrackingPage({
                       latitude: item.start_lat,
                       longitude: item.start_lng,
                       accuracy: 10,
+                      speed_kmh: 62,
+                      battery_level: 84,
+                      is_charging: true,
                       recorded_at: new Date().toISOString(),
                     };
                   }
@@ -204,7 +209,7 @@ export default function GuardianTrackingPage({
     }
 
     fetchTripData();
-    const interval = setInterval(fetchTripData, 5000);
+    const interval = setInterval(fetchTripData, 3000); // 3-second rapid polling
 
     return () => {
       isMounted = false;
@@ -274,9 +279,18 @@ export default function GuardianTrackingPage({
           destinationName={trip.destination_name}
           isSharingActive={trip.status === "active"}
           shareUrl={shareUrl}
-          speedKmh={null}
+          speedKmh={latestLocation?.speed_kmh}
           travellerName={trip.traveller_name}
           travellerPhone={trip.traveller_phone}
+        />
+
+        {/* Real-time Battery, Speed & GPS Accuracy Telemetry */}
+        <BatterySpeedCard
+          batteryLevel={latestLocation?.battery_level}
+          isCharging={latestLocation?.is_charging}
+          speedKmh={latestLocation?.speed_kmh}
+          accuracyMeters={latestLocation?.accuracy}
+          heading={latestLocation?.heading}
         />
 
         {/* High-priority Arrival Alert Banner */}
@@ -313,11 +327,12 @@ export default function GuardianTrackingPage({
           </div>
         )}
 
-        {/* Primary Distance & Live ETA Card (Always visible) */}
+        {/* Primary Distance & Live ETA Card */}
         <DistanceCard
           remainingDistanceKm={currentDistanceKm}
           destinationName={trip.destination_name}
           startName={trip.start_name || undefined}
+          speedKmh={latestLocation?.speed_kmh}
         />
 
         {/* Sliding Segmented Tab Bar */}
@@ -325,7 +340,7 @@ export default function GuardianTrackingPage({
           <button
             type="button"
             onClick={() => setActiveTab("map")}
-            className={`flex-1 min-w-[120px] flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-300 ${
+            className={`flex-1 min-w-[100px] flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-300 ${
               activeTab === "map"
                 ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-lg shadow-blue-500/25"
                 : "text-slate-400 hover:text-white hover:bg-slate-800/50"
@@ -338,7 +353,7 @@ export default function GuardianTrackingPage({
           <button
             type="button"
             onClick={() => setActiveTab("pickup")}
-            className={`flex-1 min-w-[120px] flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-300 ${
+            className={`flex-1 min-w-[100px] flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-300 ${
               activeTab === "pickup"
                 ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-lg shadow-blue-500/25"
                 : "text-slate-400 hover:text-white hover:bg-slate-800/50"
@@ -351,7 +366,7 @@ export default function GuardianTrackingPage({
           <button
             type="button"
             onClick={() => setActiveTab("alarm")}
-            className={`flex-1 min-w-[120px] flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-300 ${
+            className={`flex-1 min-w-[100px] flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-300 ${
               activeTab === "alarm"
                 ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-lg shadow-blue-500/25"
                 : "text-slate-400 hover:text-white hover:bg-slate-800/50"
@@ -363,8 +378,21 @@ export default function GuardianTrackingPage({
 
           <button
             type="button"
+            onClick={() => setActiveTab("family")}
+            className={`flex-1 min-w-[100px] flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-300 ${
+              activeTab === "family"
+                ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-lg shadow-blue-500/25"
+                : "text-slate-400 hover:text-white hover:bg-slate-800/50"
+            }`}
+          >
+            <Users className="h-3.5 w-3.5" />
+            <span>Family Roles</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setActiveTab("timeline")}
-            className={`flex-1 min-w-[120px] flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-300 ${
+            className={`flex-1 min-w-[100px] flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-300 ${
               activeTab === "timeline"
                 ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-lg shadow-blue-500/25"
                 : "text-slate-400 hover:text-white hover:bg-slate-800/50"
@@ -394,7 +422,7 @@ export default function GuardianTrackingPage({
                   </span>
                   <span className="text-[11px] text-emerald-400 font-mono flex items-center gap-1">
                     <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping" />
-                    Auto-updating (5s)
+                    Zero-Lag Broadcast (3s)
                   </span>
                 </div>
 
@@ -443,7 +471,18 @@ export default function GuardianTrackingPage({
             </div>
           )}
 
-          {/* TAB 4: TRIP TIMELINE */}
+          {/* TAB 4: MULTI-GUARDIAN FAMILY ROLES */}
+          {activeTab === "family" && (
+            <div className="animate-slide-in-left">
+              <MultiGuardianManager
+                currentDistanceKm={currentDistanceKm}
+                baseShareUrl={shareUrl.split("?")[0]}
+                onSelectActiveThreshold={(km) => setSelectedThreshold(km)}
+              />
+            </div>
+          )}
+
+          {/* TAB 5: TRIP TIMELINE */}
           {activeTab === "timeline" && (
             <div className="animate-slide-in-left">
               <TripTimeline

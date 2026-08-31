@@ -7,9 +7,11 @@ import Navbar from "@/components/common/Navbar";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase/client";
 import { BrowserLocationProvider, LocationReading } from "@/lib/location/browserLocationProvider";
 import { calculateDistanceKm } from "@/lib/distance";
+import { requestScreenWakeLock, releaseScreenWakeLock, isWakeLockActive } from "@/lib/wakelock";
 import JourneyMap from "@/components/maps/JourneyMap";
 import DistanceCard from "@/components/journey/DistanceCard";
 import LocationStatus from "@/components/journey/LocationStatus";
+import BatterySpeedCard from "@/components/journey/BatterySpeedCard";
 import ShareModal from "@/components/journey/ShareModal";
 import { Trip } from "@/types/journey";
 import {
@@ -17,13 +19,12 @@ import {
   Square,
   Pause,
   Play,
-  FlaskConical,
-  Sparkles,
   MapPin,
-  ChevronRight,
   ArrowLeft,
   Sliders,
-  Radio,
+  Sun,
+  Moon,
+  Zap,
 } from "lucide-react";
 
 export default function ActiveJourneyPage({
@@ -42,11 +43,23 @@ export default function ActiveJourneyPage({
   const [isEnding, setIsEnding] = useState(false);
   const [simulationMode, setSimulationMode] = useState(false);
   const [simSliderVal, setSimSliderVal] = useState<number>(0);
+  const [wakeLockActive, setWakeLockActive] = useState(false);
 
   const locationProviderRef = useRef<BrowserLocationProvider | null>(null);
   const unsubscribeGpsRef = useRef<(() => void) | null>(null);
 
-  // 1. Load Trip Data
+  // 1. Toggle Screen Wake Lock
+  const toggleWakeLock = async () => {
+    if (wakeLockActive) {
+      await releaseScreenWakeLock();
+      setWakeLockActive(false);
+    } else {
+      const success = await requestScreenWakeLock();
+      setWakeLockActive(success);
+    }
+  };
+
+  // 2. Load Trip Data
   useEffect(() => {
     async function loadTrip() {
       if (typeof window !== "undefined") {
@@ -102,9 +115,14 @@ export default function ActiveJourneyPage({
     }
 
     loadTrip();
+    requestScreenWakeLock().then((active) => setWakeLockActive(active));
+
+    return () => {
+      releaseScreenWakeLock();
+    };
   }, [tripId]);
 
-  // 2. Start GPS Tracking when sharing is active
+  // 3. Start Zero-Lag GPS Tracking
   useEffect(() => {
     if (!isSharingActive || simulationMode) {
       if (unsubscribeGpsRef.current) {
@@ -116,7 +134,7 @@ export default function ActiveJourneyPage({
 
     const provider = new BrowserLocationProvider({
       enableHighAccuracy: true,
-      minIntervalMs: 5000,
+      minIntervalMs: 2500, // Zero-lag fast 2.5s streaming
     });
     locationProviderRef.current = provider;
 
@@ -152,7 +170,7 @@ export default function ActiveJourneyPage({
     };
   }, [tripId, isSharingActive, simulationMode]);
 
-  // 3. End Journey handler
+  // 4. End Journey handler
   const handleEndJourney = async () => {
     if (!confirm("Are you sure you want to end this journey? Location sharing will stop immediately.")) {
       return;
@@ -160,6 +178,7 @@ export default function ActiveJourneyPage({
 
     setIsEnding(true);
     setIsSharingActive(false);
+    releaseScreenWakeLock();
 
     if (unsubscribeGpsRef.current) {
       unsubscribeGpsRef.current();
@@ -203,6 +222,9 @@ export default function ActiveJourneyPage({
       accuracy: 8,
       timestamp: Date.now(),
       speed: 18.0, // ~65 km/h
+      speed_kmh: 65,
+      battery_level: 82,
+      is_charging: true,
     };
 
     setCurrentLocation(simulatedReading);
@@ -227,7 +249,7 @@ export default function ActiveJourneyPage({
   return (
     <div className="min-h-screen bg-[#030712] text-slate-100 flex flex-col justify-between">
       <Navbar
-        statusBadge={isSharingActive ? "Live GPS Active" : "Sharing Paused"}
+        statusBadge={isSharingActive ? "Zero-Lag GPS Active" : "Sharing Paused"}
         badgeType={isSharingActive ? "active" : "neutral"}
       />
 
@@ -243,6 +265,21 @@ export default function ActiveJourneyPage({
           </Link>
 
           <div className="flex items-center gap-2">
+            {/* Screen Wake Lock Toggle */}
+            <button
+              type="button"
+              onClick={toggleWakeLock}
+              className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl border font-bold transition ${
+                wakeLockActive
+                  ? "bg-amber-500/20 border-amber-500/40 text-amber-300 shadow-sm"
+                  : "bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200"
+              }`}
+              title="Keep screen awake during travel"
+            >
+              <Sun className={`h-3.5 w-3.5 ${wakeLockActive ? "text-amber-400 animate-spin" : ""}`} />
+              <span>{wakeLockActive ? "Screen Awake" : "Wake Lock Off"}</span>
+            </button>
+
             <button
               onClick={() => setIsSharingActive(!isSharingActive)}
               className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl border font-bold transition ${
@@ -282,12 +319,21 @@ export default function ActiveJourneyPage({
           accuracyMeters={currentLocation?.accuracy}
         />
 
+        {/* Real-time Battery, Speed & GPS Card */}
+        <BatterySpeedCard
+          batteryLevel={currentLocation?.battery_level}
+          isCharging={currentLocation?.is_charging}
+          speedKmh={currentLocation?.speed_kmh}
+          accuracyMeters={currentLocation?.accuracy}
+          heading={currentLocation?.heading}
+        />
+
         {/* Distance Card */}
         <DistanceCard
           remainingDistanceKm={remainingKm}
           destinationName={trip?.destination_name || "Coimbatore"}
           startName={trip?.start_name || "Origin"}
-          speedKmh={currentLocation?.speed}
+          speedKmh={currentLocation?.speed_kmh}
         />
 
         {/* Primary Action Buttons */}
@@ -309,7 +355,7 @@ export default function ActiveJourneyPage({
           </button>
         </div>
 
-        {/* Interactive Live Map */}
+        {/* Interactive Live Map with Satellite Switcher */}
         <div className="space-y-2">
           <div className="flex items-center justify-between text-xs text-slate-400">
             <span className="font-bold text-white flex items-center gap-1.5">
@@ -318,7 +364,7 @@ export default function ActiveJourneyPage({
             </span>
             <span className="text-[11px] text-emerald-400 font-mono flex items-center gap-1">
               <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping" />
-              Broadcasting GPS
+              Broadcasting 2.5s GPS
             </span>
           </div>
 
@@ -336,9 +382,7 @@ export default function ActiveJourneyPage({
           />
         </div>
 
-        {/* ========================================================================= */}
-        {/* INTERACTIVE DRAG-TO-SIMULATE MOVEMENT SLIDER */}
-        {/* ========================================================================= */}
+        {/* Interactive Movement Simulator */}
         <div className="glass-panel-glow rounded-3xl p-5 sm:p-6">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">

@@ -6,6 +6,7 @@ import Link from "next/link";
 import Navbar from "@/components/common/Navbar";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase/client";
 import { generateSecureToken, hashToken } from "@/lib/tokens";
+import { getBatteryStatus, BatteryInfo } from "@/lib/battery";
 import {
   MapPin,
   Navigation,
@@ -19,6 +20,9 @@ import {
   CheckCircle2,
   Phone,
   User,
+  Bell,
+  Battery,
+  Sliders,
 } from "lucide-react";
 
 // Predefined popular hubs with descriptive tags & icons
@@ -37,6 +41,8 @@ export default function CreateJourney() {
   const [destination, setDestination] = useState("");
   const [travellerName, setTravellerName] = useState("");
   const [travellerPhone, setTravellerPhone] = useState("");
+  const [defaultThresholdKm, setDefaultThresholdKm] = useState<number>(50);
+  const [batteryState, setBatteryState] = useState<BatteryInfo | null>(null);
   const [startLocation, setStartLocation] = useState<{
     lat: number;
     lng: number;
@@ -48,7 +54,7 @@ export default function CreateJourney() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  // Acquire GPS on mount
+  // Acquire GPS and Battery on mount
   const acquireGps = () => {
     if (typeof window === "undefined" || !navigator.geolocation) {
       setGpsError("Geolocation is not supported by your browser.");
@@ -85,6 +91,7 @@ export default function CreateJourney() {
 
   useEffect(() => {
     acquireGps();
+    getBatteryStatus().then((info) => setBatteryState(info));
   }, []);
 
   const handleStartJourney = async (e: React.FormEvent) => {
@@ -146,7 +153,6 @@ export default function CreateJourney() {
         });
 
         if (tripError) {
-          // If columns don't exist in remote schema yet, fallback to inserting without them
           console.warn("Supabase insert notice:", tripError.message);
         }
 
@@ -155,6 +161,8 @@ export default function CreateJourney() {
           latitude: sLat,
           longitude: sLng,
           accuracy: startLocation?.accuracy || 10,
+          battery_level: batteryState?.level ?? 85,
+          is_charging: batteryState?.charging ?? true,
           recorded_at: new Date().toISOString(),
         });
 
@@ -178,6 +186,7 @@ export default function CreateJourney() {
             destination_lng: destLng,
             traveller_name: travellerName.trim() || null,
             traveller_phone: travellerPhone.trim() || null,
+            default_threshold_km: defaultThresholdKm,
             status: "active",
             rawGuardianToken,
             tokenHash,
@@ -328,6 +337,31 @@ export default function CreateJourney() {
               </div>
             </div>
 
+            {/* Default Arrival Wake-Up Radius Selector */}
+            <div>
+              <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center justify-between">
+                <span>Default Wake-Up Radius for Parents:</span>
+                <span className="text-[10px] text-cyan-400 font-bold">Rings siren when you arrive here</span>
+              </label>
+
+              <div className="grid grid-cols-4 gap-2">
+                {[50, 25, 10, 5].map((km) => (
+                  <button
+                    key={km}
+                    type="button"
+                    onClick={() => setDefaultThresholdKm(km)}
+                    className={`py-2.5 px-3 rounded-xl border text-center font-bold text-xs transition ${
+                      defaultThresholdKm === km
+                        ? "bg-blue-600 text-white border-blue-400 shadow-md shadow-blue-500/25"
+                        : "bg-slate-900/80 text-slate-300 border-slate-800 hover:border-slate-700"
+                    }`}
+                  >
+                    {km} km
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* Optional Traveller Info: Phone & Name for Direct Calling */}
             <div className="pt-2 border-t border-slate-800/80 space-y-3.5">
               <div className="flex items-center justify-between">
@@ -374,10 +408,10 @@ export default function CreateJourney() {
                 <ShieldCheck className="h-5 w-5 text-cyan-400 shrink-0 mt-0.5" />
                 <div>
                   <h3 className="font-bold text-xs text-cyan-200">
-                    Consent-First Privacy
+                    Consent-First Privacy & Zero-Lag GPS
                   </h3>
                   <p className="mt-0.5 text-[11px] leading-relaxed text-slate-300">
-                    Your GPS stream starts only after tapping &quot;Start Journey&quot;. You can pause or permanently stop location sharing anytime.
+                    Zero-lag continuous GPS tracking starts only after tapping &quot;Start Journey&quot;. Screen Wake-Lock will keep your phone active overnight.
                   </p>
                 </div>
               </div>

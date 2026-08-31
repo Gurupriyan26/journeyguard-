@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import "leaflet/dist/leaflet.css";
-import { Maximize2, Navigation, Layers } from "lucide-react";
+import { Maximize2, Layers, Satellite, Map as MapIcon, Moon } from "lucide-react";
+
+export type MapLayerStyle = "dark" | "satellite" | "street";
 
 interface JourneyMapProps {
   travellerPos?: { lat: number; lng: number } | null;
@@ -11,16 +13,53 @@ interface JourneyMapProps {
   className?: string;
 }
 
+const TILE_LAYERS: Record<MapLayerStyle, { url: string; maxZoom: number; attribution: string }> = {
+  dark: {
+    url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+    maxZoom: 19,
+    attribution: "CartoDB Voyager",
+  },
+  satellite: {
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    maxZoom: 18,
+    attribution: "Esri / ArcGIS Satellite",
+  },
+  street: {
+    url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    maxZoom: 19,
+    attribution: "OpenStreetMap",
+  },
+};
+
 export default function JourneyMap({
   travellerPos,
   destinationPos,
   startPos,
-  className = "h-[360px] w-full rounded-2xl overflow-hidden shadow-2xl border border-slate-800 relative z-0",
+  className = "h-[380px] w-full rounded-3xl overflow-hidden shadow-2xl border border-slate-800 relative z-0",
 }: JourneyMapProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
+  const tileLayerRef = useRef<any>(null);
   const markersRef = useRef<{ traveller?: any; destination?: any; line?: any }>({});
   const [mapLoaded, setMapLoaded] = useState(false);
+  const [activeLayer, setActiveLayer] = useState<MapLayerStyle>("dark");
+
+  // Switch tile layer dynamically
+  const switchLayer = (style: MapLayerStyle) => {
+    setActiveLayer(style);
+    if (!mapInstanceRef.current) return;
+
+    import("leaflet").then((L) => {
+      if (tileLayerRef.current) {
+        mapInstanceRef.current.removeLayer(tileLayerRef.current);
+      }
+      const newTile = L.tileLayer(TILE_LAYERS[style].url, {
+        maxZoom: TILE_LAYERS[style].maxZoom,
+        subdomains: "abcd",
+      }).addTo(mapInstanceRef.current);
+      tileLayerRef.current = newTile;
+    });
+  };
 
   // Recenter helper
   const handleRecenter = () => {
@@ -31,7 +70,7 @@ export default function JourneyMap({
           [travellerPos.lat, travellerPos.lng],
           [destinationPos.lat, destinationPos.lng],
         ]);
-        mapInstanceRef.current.fitBounds(bounds, { padding: [45, 45] });
+        mapInstanceRef.current.fitBounds(bounds, { padding: [50, 50] });
       });
     } else if (travellerPos) {
       mapInstanceRef.current.setView([travellerPos.lat, travellerPos.lng], 12);
@@ -41,7 +80,6 @@ export default function JourneyMap({
   useEffect(() => {
     let isMounted = true;
 
-    // Dynamically import Leaflet for Next.js SSR compatibility
     import("leaflet").then((L) => {
       if (!isMounted || !mapContainerRef.current) return;
 
@@ -55,26 +93,27 @@ export default function JourneyMap({
         : [destinationPos.lat, destinationPos.lng];
 
       const map = L.map(mapContainerRef.current, {
-        zoomControl: false, // We'll customize zoom or let user use pinch
+        zoomControl: false,
         attributionControl: false,
       }).setView(initialCenter, 10);
 
       mapInstanceRef.current = map;
 
-      // Dark / modern CartoDB tiles with high readability
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
-        maxZoom: 19,
+      // Base tile layer
+      const baseTile = L.tileLayer(TILE_LAYERS[activeLayer].url, {
+        maxZoom: TILE_LAYERS[activeLayer].maxZoom,
         subdomains: "abcd",
       }).addTo(map);
+      tileLayerRef.current = baseTile;
 
       // Custom animated pulse marker for Traveller
       const travellerIcon = L.divIcon({
         className: "custom-traveller-pin",
         html: `
           <div style="position: relative; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center;">
-            <div style="position: absolute; width: 100%; height: 100%; border-radius: 9999px; background: rgba(59, 130, 246, 0.4); animation: ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
-            <div style="position: absolute; width: 32px; height: 32px; border-radius: 9999px; background: rgba(59, 130, 246, 0.6); animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;"></div>
-            <div style="position: relative; width: 26px; height: 26px; background: #2563eb; border: 3px solid #ffffff; border-radius: 9999px; box-shadow: 0 4px 10px rgba(37, 99, 235, 0.5); display: flex; align-items: center; justify-content: center; color: white; font-size: 12px;">
+            <div style="position: absolute; width: 100%; height: 100%; border-radius: 9999px; background: rgba(56, 189, 248, 0.5); animation: ping 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
+            <div style="position: absolute; width: 32px; height: 32px; border-radius: 9999px; background: rgba(37, 99, 235, 0.6); animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;"></div>
+            <div style="position: relative; width: 28px; height: 28px; background: #0284c7; border: 3px solid #ffffff; border-radius: 9999px; box-shadow: 0 4px 12px rgba(2, 132, 199, 0.6); display: flex; align-items: center; justify-content: center; color: white; font-size: 13px;">
               🚍
             </div>
           </div>
@@ -83,18 +122,18 @@ export default function JourneyMap({
         iconAnchor: [22, 22],
       });
 
-      // Custom sleek marker for Destination
+      // Custom marker for Destination
       const destinationIcon = L.divIcon({
         className: "custom-destination-pin",
         html: `
-          <div style="position: relative; width: 38px; height: 38px; display: flex; align-items: center; justify-content: center;">
-            <div style="position: relative; width: 28px; height: 28px; background: #dc2626; border: 3px solid #ffffff; border-radius: 9999px; box-shadow: 0 4px 10px rgba(220, 38, 38, 0.5); display: flex; align-items: center; justify-content: center; color: white; font-size: 13px;">
+          <div style="position: relative; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;">
+            <div style="position: relative; width: 30px; height: 30px; background: #dc2626; border: 3px solid #ffffff; border-radius: 9999px; box-shadow: 0 4px 12px rgba(220, 38, 38, 0.6); display: flex; align-items: center; justify-content: center; color: white; font-size: 14px;">
               🏁
             </div>
           </div>
         `,
-        iconSize: [38, 38],
-        iconAnchor: [19, 19],
+        iconSize: [40, 40],
+        iconAnchor: [20, 20],
       });
 
       // Add Destination marker
@@ -103,8 +142,8 @@ export default function JourneyMap({
       })
         .addTo(map)
         .bindPopup(
-          `<div style="font-family: inherit; font-size: 12px; font-weight: 600;">
-            📍 Destination<br><span style="font-weight: 400; color: #64748b;">${destinationPos.name || "Arrival Point"}</span>
+          `<div style="font-family: inherit; font-size: 12px; font-weight: 700; color: #0f172a;">
+            📍 Destination Stop<br><span style="font-weight: 400; color: #475569;">${destinationPos.name || "Arrival Point"}</span>
           </div>`
         );
 
@@ -117,22 +156,21 @@ export default function JourneyMap({
         })
           .addTo(map)
           .bindPopup(
-            `<div style="font-family: inherit; font-size: 12px; font-weight: 600;">
-              🚍 Traveller Live Position
+            `<div style="font-family: inherit; font-size: 12px; font-weight: 700; color: #0f172a;">
+              🚍 Live GPS Position
             </div>`
           );
         markersRef.current.traveller = travMarker;
 
-        // Draw glowing polyline
         const line = L.polyline(
           [
             [travellerPos.lat, travellerPos.lng],
             [destinationPos.lat, destinationPos.lng],
           ],
           {
-            color: "#3b82f6",
-            weight: 3.5,
-            opacity: 0.85,
+            color: "#38bdf8",
+            weight: 4,
+            opacity: 0.9,
             dashArray: "8, 8",
           }
         ).addTo(map);
@@ -178,23 +216,68 @@ export default function JourneyMap({
     <div className="relative w-full group">
       <div ref={mapContainerRef} className={className} />
 
-      {/* Floating map controls */}
+      {/* Floating Map Controls & Layer Switcher */}
       {mapLoaded && (
-        <div className="absolute top-3 right-3 z-[400] flex flex-col gap-1.5">
-          <button
-            type="button"
-            onClick={handleRecenter}
-            className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-900/90 text-slate-200 hover:text-white border border-slate-700/80 shadow-lg backdrop-blur-md transition hover:bg-slate-800"
-            title="Fit Route"
-          >
-            <Maximize2 className="h-4 w-4" />
-          </button>
-        </div>
+        <>
+          {/* Layer switcher pill on top left */}
+          <div className="absolute top-3 left-3 z-[400] flex items-center p-1 rounded-2xl bg-slate-950/85 backdrop-blur-md border border-slate-800 shadow-xl">
+            <button
+              type="button"
+              onClick={() => switchLayer("dark")}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-bold transition ${
+                activeLayer === "dark"
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <Moon className="h-3 w-3" />
+              <span>Dark</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => switchLayer("satellite")}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-bold transition ${
+                activeLayer === "satellite"
+                  ? "bg-cyan-600 text-white shadow-sm"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <Satellite className="h-3 w-3" />
+              <span>Satellite</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => switchLayer("street")}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-bold transition ${
+                activeLayer === "street"
+                  ? "bg-slate-700 text-white shadow-sm"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <MapIcon className="h-3 w-3" />
+              <span>Street</span>
+            </button>
+          </div>
+
+          {/* Recenter button on top right */}
+          <div className="absolute top-3 right-3 z-[400]">
+            <button
+              type="button"
+              onClick={handleRecenter}
+              className="flex h-9 w-9 items-center justify-center rounded-2xl bg-slate-950/85 text-slate-200 hover:text-white border border-slate-800 shadow-xl backdrop-blur-md transition hover:bg-slate-800"
+              title="Fit Full Route"
+            >
+              <Maximize2 className="h-4 w-4" />
+            </button>
+          </div>
+        </>
       )}
 
       {/* Map attribution tag */}
-      <div className="absolute bottom-2 left-2 z-[400] px-2 py-0.5 rounded-md bg-slate-950/70 backdrop-blur-sm text-[9px] font-mono text-slate-400 border border-slate-800/60 pointer-events-none">
-        OpenStreetMap • Voyager
+      <div className="absolute bottom-2 left-2 z-[400] px-2 py-0.5 rounded-md bg-slate-950/80 backdrop-blur-sm text-[9px] font-mono text-slate-400 border border-slate-800 pointer-events-none">
+        {TILE_LAYERS[activeLayer].attribution}
       </div>
     </div>
   );
