@@ -14,6 +14,7 @@ import {
   showSystemNotification,
   AlarmSoundType,
 } from "@/lib/notifications";
+import { triggerHaptic } from "@/lib/haptics";
 import JourneyMap from "@/components/maps/JourneyMap";
 import DistanceCard from "@/components/journey/DistanceCard";
 import LocationStatus from "@/components/journey/LocationStatus";
@@ -38,6 +39,9 @@ import {
   Moon,
   ListOrdered,
   Users,
+  Eye,
+  Phone,
+  Sparkles,
 } from "lucide-react";
 
 type DashboardTab = "map" | "pickup" | "alarm" | "family" | "timeline";
@@ -61,6 +65,7 @@ export default function GuardianTrackingPage({
   const [isLoading, setIsLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [notificationEnabled, setNotificationEnabled] = useState(false);
+  const [isSeniorMode, setIsSeniorMode] = useState(false);
 
   const previousDistanceRef = useRef<number | null>(null);
   const triggeredThresholdsRef = useRef<number[]>([]);
@@ -90,7 +95,6 @@ export default function GuardianTrackingPage({
         // 1. Try local cache (sessionStorage and localStorage)
         if (typeof window !== "undefined") {
           const checkStorage = (storage: Storage) => {
-            // Check direct token mapping
             const mappedId = storage.getItem(`jg_token_${token}`);
             if (mappedId) {
               const mappedTrip = storage.getItem(`jg_trip_${mappedId}`);
@@ -101,7 +105,6 @@ export default function GuardianTrackingPage({
               }
             }
 
-            // Check direct tripId
             const directTrip = storage.getItem(`jg_trip_${token}`);
             if (directTrip) {
               try {
@@ -109,7 +112,6 @@ export default function GuardianTrackingPage({
               } catch {}
             }
 
-            // Scan all stored trips
             for (let i = 0; i < storage.length; i++) {
               const key = storage.key(i);
               if (key && key.startsWith("jg_trip_")) {
@@ -201,7 +203,6 @@ export default function GuardianTrackingPage({
         if (foundLocation) {
           setLatestLocation(foundLocation);
 
-          // Calculate current distance
           const currentDist = calculateDistanceKm(
             foundLocation.latitude,
             foundLocation.longitude,
@@ -209,7 +210,6 @@ export default function GuardianTrackingPage({
             foundTrip.destination_lng
           );
 
-          // Check threshold alert triggers
           const prevDist = previousDistanceRef.current;
           const triggeredList = triggeredThresholdsRef.current;
 
@@ -217,14 +217,13 @@ export default function GuardianTrackingPage({
             !triggeredList.includes(selectedThreshold) &&
             hasCrossedThreshold(prevDist, currentDist, selectedThreshold)
           ) {
-            // Trigger Alert!
             const newTriggered = [...triggeredList, selectedThreshold];
             setTriggeredThresholds(newTriggered);
             triggeredThresholdsRef.current = newTriggered;
 
             const alertText = `🚨 Traveller is now approx ${currentDist} km from ${foundTrip.destination_name}. Time to prepare for pickup!`;
             setActiveAlertBanner(alertText);
-            setIsAlarmModalOpen(true); // Open emergency siren modal
+            setIsAlarmModalOpen(true);
             showSystemNotification(
               `JourneyGuard Alert: ${foundTrip.destination_name}`,
               alertText,
@@ -240,7 +239,7 @@ export default function GuardianTrackingPage({
     }
 
     fetchTripData();
-    const interval = setInterval(fetchTripData, 3000); // 3-second rapid polling
+    const interval = setInterval(fetchTripData, 3000);
 
     return () => {
       isMounted = false;
@@ -255,6 +254,7 @@ export default function GuardianTrackingPage({
 
   const currentDistanceKm = calculateDistanceKm(travLat, travLng, destLat, destLng);
   const shareUrl = typeof window !== "undefined" ? window.location.href : "";
+  const cleanPhone = trip?.traveller_phone ? trip.traveller_phone.replace(/\s+/g, "") : "";
 
   if (isLoading) {
     return (
@@ -286,295 +286,372 @@ export default function GuardianTrackingPage({
   }
 
   return (
-    <div className="min-h-screen bg-[#030712] text-slate-100 flex flex-col justify-between">
+    <div className={`min-h-screen bg-[#030712] text-slate-100 flex flex-col justify-between ${isSeniorMode ? "senior-mode-active" : ""}`}>
       <Navbar statusBadge="Guardian Active" badgeType="guardian" />
 
       <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6 w-full space-y-5 flex-1">
-        {/* Navigation & Header */}
+        {/* Navigation & Senior Mode Toggle */}
         <div className="flex items-center justify-between">
           <Link
             href="/"
+            onClick={() => triggerHaptic("tap")}
             className="text-xs text-slate-400 hover:text-white transition flex items-center gap-1.5 font-bold"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
             <span>Home</span>
           </Link>
 
-          <span className="text-[11px] px-3 py-1 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 font-bold">
-            🛡️ Parent Care Portal
-          </span>
+          <div className="flex items-center gap-2">
+            {/* Senior / Parent Easy Mode Switch */}
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic("tap");
+                setIsSeniorMode(!isSeniorMode);
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-black transition ${
+                isSeniorMode
+                  ? "bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-500/20"
+                  : "bg-slate-900/90 text-slate-300 border-slate-800 hover:text-white"
+              }`}
+            >
+              <Eye className="h-3.5 w-3.5" />
+              <span>{isSeniorMode ? "👵 Senior Mode ON" : "👴 Senior Mode"}</span>
+            </button>
+
+            <span className="text-[11px] px-3 py-1 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 font-bold hidden sm:inline">
+              🛡️ Parent Care Portal
+            </span>
+          </div>
         </div>
 
-        {/* Reassuring Parent Status Header */}
-        <ParentStatusHeader
-          destinationName={trip.destination_name}
-          isSharingActive={trip.status === "active"}
-          shareUrl={shareUrl}
-          speedKmh={latestLocation?.speed_kmh}
-          travellerName={trip.traveller_name}
-          travellerPhone={trip.traveller_phone}
-        />
+        {/* ========================================================================= */}
+        {/* SENIOR / PARENT EASY MODE VIEW (Extra-Large & Simplified) */}
+        {/* ========================================================================= */}
+        {isSeniorMode ? (
+          <div className="space-y-4 animate-in fade-in zoom-in-95 duration-200">
+            {/* Giant Reassuring Header Card */}
+            <div className="glass-panel-emerald rounded-3xl p-6 sm:p-8 text-center space-y-3">
+              <span className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 font-black text-xs uppercase tracking-wider">
+                <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping" />
+                Live Tracking Active
+              </span>
 
-        {/* Real-time Battery, Speed & GPS Accuracy Telemetry */}
-        <BatterySpeedCard
-          batteryLevel={latestLocation?.battery_level}
-          isCharging={latestLocation?.is_charging}
-          speedKmh={latestLocation?.speed_kmh}
-          accuracyMeters={latestLocation?.accuracy}
-          heading={latestLocation?.heading}
-        />
+              <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight">
+                {trip.traveller_name || "Your Child"} is Travelling to {trip.destination_name}
+              </h2>
 
-        {/* High-priority Arrival Alert Banner */}
-        {activeAlertBanner && (
-          <div className="rounded-3xl border-2 border-amber-500/80 bg-gradient-to-r from-amber-950 via-slate-900 to-amber-950 p-5 shadow-2xl animate-slide-up">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-start gap-3">
-                <span className="text-3xl animate-bounce">🚨</span>
+              <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 flex items-center justify-around text-center">
                 <div>
-                  <h3 className="font-black text-amber-200 text-sm">
-                    Arrival Threshold Reached!
-                  </h3>
-                  <p className="text-xs text-slate-200 mt-1 leading-relaxed font-semibold">
-                    {activeAlertBanner}
-                  </p>
+                  <span className="text-xs uppercase font-bold text-slate-400 block">Distance Left</span>
+                  <strong className="text-3xl sm:text-4xl font-black text-cyan-300 font-mono">
+                    {currentDistanceKm} km
+                  </strong>
+                </div>
+                <div className="h-10 w-px bg-slate-800" />
+                <div>
+                  <span className="text-xs uppercase font-bold text-slate-400 block">Expected Arrival</span>
+                  <strong className="text-2xl sm:text-3xl font-black text-white font-mono">
+                    ~{Math.round(currentDistanceKm / 60)}h {Math.round(currentDistanceKm % 60)}m
+                  </strong>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setIsAlarmModalOpen(true)}
-                  className="px-3 py-1.5 rounded-xl bg-amber-500 text-slate-950 font-black text-xs hover:bg-amber-400 transition"
+            </div>
+
+            {/* Giant 1-Tap Action Call & Siren Buttons */}
+            <div className="space-y-3">
+              {cleanPhone ? (
+                <a
+                  href={`tel:${cleanPhone}`}
+                  onClick={() => triggerHaptic("tap")}
+                  className="w-full py-5 px-6 rounded-3xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-lg sm:text-xl flex items-center justify-center gap-3 transition shadow-2xl shadow-emerald-600/40 active:scale-95"
                 >
-                  View Actions
-                </button>
-                <button
-                  onClick={() => setActiveAlertBanner(null)}
-                  className="text-xs text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800"
-                  aria-label="Dismiss alert"
+                  <Phone className="h-7 w-7" />
+                  <span>📞 1-TAP CALL {trip.traveller_name?.toUpperCase() || "TRAVELLER"}</span>
+                </a>
+              ) : (
+                <a
+                  href="tel:"
+                  onClick={() => triggerHaptic("tap")}
+                  className="w-full py-5 px-6 rounded-3xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-lg sm:text-xl flex items-center justify-center gap-3 transition shadow-2xl shadow-emerald-600/40 active:scale-95"
                 >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
+                  <Phone className="h-7 w-7" />
+                  <span>📞 1-TAP MAKE PHONE CALL</span>
+                </a>
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic("alarm");
+                  playAlertSound(selectedSound);
+                }}
+                className="w-full py-5 px-6 rounded-3xl bg-blue-600 hover:bg-blue-500 text-white font-black text-lg sm:text-xl flex items-center justify-center gap-3 transition shadow-2xl shadow-blue-600/40 active:scale-95"
+              >
+                <Volume2 className="h-7 w-7 text-cyan-300" />
+                <span>🔊 TEST LOUD WAKE-UP ALARM</span>
+              </button>
+            </div>
+
+            {/* Big Live Map */}
+            <div className="rounded-3xl overflow-hidden border-2 border-slate-800 shadow-2xl">
+              <JourneyMap
+                travellerPos={
+                  latestLocation
+                    ? { lat: latestLocation.latitude, lng: latestLocation.longitude }
+                    : null
+                }
+                destinationPos={{
+                  lat: destLat,
+                  lng: destLng,
+                  name: trip.destination_name,
+                }}
+              />
             </div>
           </div>
-        )}
+        ) : (
+          /* ========================================================================= */
+          /* STANDARD ADVANCED MULTI-TAB VIEW */
+          /* ========================================================================= */
+          <>
+            {/* Reassuring Parent Status Header */}
+            <ParentStatusHeader
+              destinationName={trip.destination_name}
+              isSharingActive={trip.status === "active"}
+              shareUrl={shareUrl}
+              speedKmh={latestLocation?.speed_kmh}
+              travellerName={trip.traveller_name}
+              travellerPhone={trip.traveller_phone}
+            />
 
-        {/* Primary Distance & Live ETA Card */}
-        <DistanceCard
-          remainingDistanceKm={currentDistanceKm}
-          destinationName={trip.destination_name}
-          startName={trip.start_name || undefined}
-          speedKmh={latestLocation?.speed_kmh}
-        />
+            {/* Real-time Battery, Speed & GPS Accuracy Telemetry */}
+            <BatterySpeedCard
+              batteryLevel={latestLocation?.battery_level}
+              isCharging={latestLocation?.is_charging}
+              speedKmh={latestLocation?.speed_kmh}
+              accuracyMeters={latestLocation?.accuracy}
+              heading={latestLocation?.heading}
+            />
 
-        {/* Sliding Segmented Tab Bar */}
-        <div className="p-1.5 rounded-2xl bg-slate-900/90 border border-slate-800 backdrop-blur-xl flex items-center gap-1 overflow-x-auto scrollbar-hide">
-          <button
-            type="button"
-            onClick={() => setActiveTab("map")}
-            className={`flex-1 min-w-[100px] flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-300 ${
-              activeTab === "map"
-                ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-lg shadow-blue-500/25"
-                : "text-slate-400 hover:text-white hover:bg-slate-800/50"
-            }`}
-          >
-            <MapPin className="h-3.5 w-3.5" />
-            <span>Live Map</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab("pickup")}
-            className={`flex-1 min-w-[100px] flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-300 ${
-              activeTab === "pickup"
-                ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-lg shadow-blue-500/25"
-                : "text-slate-400 hover:text-white hover:bg-slate-800/50"
-            }`}
-          >
-            <Car className="h-3.5 w-3.5" />
-            <span>Pickup Timing</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab("alarm")}
-            className={`flex-1 min-w-[100px] flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-300 ${
-              activeTab === "alarm"
-                ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-lg shadow-blue-500/25"
-                : "text-slate-400 hover:text-white hover:bg-slate-800/50"
-            }`}
-          >
-            <Moon className="h-3.5 w-3.5" />
-            <span>Night Alarms</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab("family")}
-            className={`flex-1 min-w-[100px] flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-300 ${
-              activeTab === "family"
-                ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-lg shadow-blue-500/25"
-                : "text-slate-400 hover:text-white hover:bg-slate-800/50"
-            }`}
-          >
-            <Users className="h-3.5 w-3.5" />
-            <span>Family Roles</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab("timeline")}
-            className={`flex-1 min-w-[100px] flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-300 ${
-              activeTab === "timeline"
-                ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-lg shadow-blue-500/25"
-                : "text-slate-400 hover:text-white hover:bg-slate-800/50"
-            }`}
-          >
-            <ListOrdered className="h-3.5 w-3.5" />
-            <span>Timeline</span>
-          </button>
-        </div>
-
-        {/* Sliding Tab Views */}
-        <div className="transition-all duration-300">
-          {/* TAB 1: LIVE MAP */}
-          {activeTab === "map" && (
-            <div className="space-y-4 animate-slide-in-right">
-              <LocationStatus
-                isSharingActive={trip.status === "active"}
-                lastUpdatedTimestamp={latestLocation?.recorded_at}
-                accuracyMeters={latestLocation?.accuracy}
-              />
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs text-slate-400">
-                  <span className="font-bold text-white flex items-center gap-1.5">
-                    <MapPin className="h-3.5 w-3.5 text-cyan-400" />
-                    <span>Real-time GPS Tracking</span>
-                  </span>
-                  <span className="text-[11px] text-emerald-400 font-mono flex items-center gap-1">
-                    <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping" />
-                    Zero-Lag Broadcast (3s)
-                  </span>
+            {/* High-priority Arrival Alert Banner */}
+            {activeAlertBanner && (
+              <div className="rounded-3xl border-2 border-amber-500/80 bg-gradient-to-r from-amber-950 via-slate-900 to-amber-950 p-5 shadow-2xl animate-slide-up">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <span className="text-3xl animate-bounce">🚨</span>
+                    <div>
+                      <h3 className="font-black text-amber-200 text-sm">
+                        Arrival Threshold Reached!
+                      </h3>
+                      <p className="text-xs text-slate-200 mt-1 leading-relaxed font-semibold">
+                        {activeAlertBanner}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setIsAlarmModalOpen(true)}
+                      className="px-3 py-1.5 rounded-xl bg-amber-500 text-slate-950 font-black text-xs hover:bg-amber-400 transition"
+                    >
+                      View Actions
+                    </button>
+                    <button
+                      onClick={() => setActiveAlertBanner(null)}
+                      className="text-xs text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800"
+                      aria-label="Dismiss alert"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
-
-                <JourneyMap
-                  travellerPos={
-                    latestLocation
-                      ? { lat: latestLocation.latitude, lng: latestLocation.longitude }
-                      : null
-                  }
-                  destinationPos={{
-                    lat: destLat,
-                    lng: destLng,
-                    name: trip.destination_name,
-                  }}
-                />
               </div>
-            </div>
-          )}
+            )}
 
-          {/* TAB 2: PICKUP ASSISTANT */}
-          {activeTab === "pickup" && (
-            <div className="animate-slide-in-left">
-              <ParentPickupAssistant
-                remainingDistanceKm={currentDistanceKm}
-                destinationName={trip.destination_name}
-                destinationLat={destLat}
-                destinationLng={destLng}
-              />
-            </div>
-          )}
+            {/* Primary Distance & Live ETA Card */}
+            <DistanceCard
+              remainingDistanceKm={currentDistanceKm}
+              destinationName={trip.destination_name}
+              startName={trip.start_name || undefined}
+              speedKmh={latestLocation?.speed_kmh}
+            />
 
-          {/* TAB 3: NIGHT SLEEP ALARMS */}
-          {activeTab === "alarm" && (
-            <div className="animate-slide-in-right">
-              <AlertSelector
-                currentDistanceKm={currentDistanceKm}
-                selectedThreshold={selectedThreshold}
-                onSelectThreshold={(km) => {
-                  setSelectedThreshold(km);
-                  requestNotificationPermission();
+            {/* Sliding Segmented Tab Bar */}
+            <div className="p-1.5 rounded-2xl bg-slate-900/90 border border-slate-800 backdrop-blur-xl flex items-center gap-1 overflow-x-auto scrollbar-hide">
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic("tap");
+                  setActiveTab("map");
                 }}
-                triggeredThresholds={triggeredThresholds}
-                selectedSound={selectedSound}
-                onSelectSound={(snd) => setSelectedSound(snd)}
-              />
-            </div>
-          )}
+                className={`flex-1 min-w-[100px] flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-300 ${
+                  activeTab === "map"
+                    ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-lg shadow-blue-500/25"
+                    : "text-slate-400 hover:text-white hover:bg-slate-800/50"
+                }`}
+              >
+                <MapPin className="h-3.5 w-3.5" />
+                <span>Live Map</span>
+              </button>
 
-          {/* TAB 4: MULTI-GUARDIAN FAMILY ROLES */}
-          {activeTab === "family" && (
-            <div className="animate-slide-in-left">
-              <MultiGuardianManager
-                currentDistanceKm={currentDistanceKm}
-                baseShareUrl={shareUrl.split("?")[0]}
-                onSelectActiveThreshold={(km) => setSelectedThreshold(km)}
-              />
-            </div>
-          )}
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic("tap");
+                  setActiveTab("pickup");
+                }}
+                className={`flex-1 min-w-[100px] flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-300 ${
+                  activeTab === "pickup"
+                    ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-lg shadow-blue-500/25"
+                    : "text-slate-400 hover:text-white hover:bg-slate-800/50"
+                }`}
+              >
+                <Car className="h-3.5 w-3.5" />
+                <span>Pickup Timing</span>
+              </button>
 
-          {/* TAB 5: TRIP TIMELINE */}
-          {activeTab === "timeline" && (
-            <div className="animate-slide-in-left">
-              <TripTimeline
-                startName={trip.start_name || undefined}
-                destinationName={trip.destination_name}
-                remainingDistanceKm={currentDistanceKm}
-                selectedThresholdKm={selectedThreshold}
-                isCompleted={trip.status === "completed"}
-              />
-            </div>
-          )}
-        </div>
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic("tap");
+                  setActiveTab("alarm");
+                }}
+                className={`flex-1 min-w-[100px] flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-300 ${
+                  activeTab === "alarm"
+                    ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-lg shadow-blue-500/25"
+                    : "text-slate-400 hover:text-white hover:bg-slate-800/50"
+                }`}
+              >
+                <Moon className="h-3.5 w-3.5" />
+                <span>Night Alarms</span>
+              </button>
 
-        {/* Sound & Notification Status Box */}
-        <div className="glass-panel rounded-3xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between text-xs gap-3">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-800 text-slate-300">
-              {notificationEnabled ? (
-                <BellRing className="h-5 w-5 text-emerald-400" />
-              ) : (
-                <BellOff className="h-5 w-5 text-amber-400" />
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic("tap");
+                  setActiveTab("family");
+                }}
+                className={`flex-1 min-w-[100px] flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-300 ${
+                  activeTab === "family"
+                    ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-lg shadow-blue-500/25"
+                    : "text-slate-400 hover:text-white hover:bg-slate-800/50"
+                }`}
+              >
+                <Users className="h-3.5 w-3.5" />
+                <span>Family Roles</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic("tap");
+                  setActiveTab("timeline");
+                }}
+                className={`flex-1 min-w-[100px] flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-300 ${
+                  activeTab === "timeline"
+                    ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-lg shadow-blue-500/25"
+                    : "text-slate-400 hover:text-white hover:bg-slate-800/50"
+                }`}
+              >
+                <ListOrdered className="h-3.5 w-3.5" />
+                <span>Timeline</span>
+              </button>
+            </div>
+
+            {/* Sliding Tab Views */}
+            <div className="transition-all duration-300">
+              {/* TAB 1: LIVE MAP */}
+              {activeTab === "map" && (
+                <div className="space-y-4 animate-slide-in-right">
+                  <LocationStatus
+                    isSharingActive={trip.status === "active"}
+                    lastUpdatedTimestamp={latestLocation?.recorded_at}
+                    accuracyMeters={latestLocation?.accuracy}
+                  />
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs text-slate-400">
+                      <span className="font-bold text-white flex items-center gap-1.5">
+                        <MapPin className="h-3.5 w-3.5 text-cyan-400" />
+                        <span>Real-time GPS Tracking</span>
+                      </span>
+                      <span className="text-[11px] text-emerald-400 font-mono flex items-center gap-1">
+                        <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping" />
+                        Zero-Lag Broadcast (3s)
+                      </span>
+                    </div>
+
+                    <JourneyMap
+                      travellerPos={
+                        latestLocation
+                          ? { lat: latestLocation.latitude, lng: latestLocation.longitude }
+                          : null
+                      }
+                      destinationPos={{
+                        lat: destLat,
+                        lng: destLng,
+                        name: trip.destination_name,
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 2: PICKUP ASSISTANT */}
+              {activeTab === "pickup" && (
+                <div className="animate-slide-in-left">
+                  <ParentPickupAssistant
+                    remainingDistanceKm={currentDistanceKm}
+                    destinationName={trip.destination_name}
+                    destinationLat={destLat}
+                    destinationLng={destLng}
+                  />
+                </div>
+              )}
+
+              {/* TAB 3: NIGHT SLEEP ALARMS */}
+              {activeTab === "alarm" && (
+                <div className="animate-slide-in-right">
+                  <AlertSelector
+                    currentDistanceKm={currentDistanceKm}
+                    selectedThreshold={selectedThreshold}
+                    onSelectThreshold={(km) => {
+                      setSelectedThreshold(km);
+                      requestNotificationPermission();
+                    }}
+                    triggeredThresholds={triggeredThresholds}
+                    selectedSound={selectedSound}
+                    onSelectSound={(snd) => setSelectedSound(snd)}
+                  />
+                </div>
+              )}
+
+              {/* TAB 4: MULTI-GUARDIAN FAMILY ROLES */}
+              {activeTab === "family" && (
+                <div className="animate-slide-in-left">
+                  <MultiGuardianManager
+                    currentDistanceKm={currentDistanceKm}
+                    baseShareUrl={shareUrl.split("?")[0]}
+                    onSelectActiveThreshold={(km) => setSelectedThreshold(km)}
+                  />
+                </div>
+              )}
+
+              {/* TAB 5: TRIP TIMELINE */}
+              {activeTab === "timeline" && (
+                <div className="animate-slide-in-left">
+                  <TripTimeline
+                    startName={trip.start_name || undefined}
+                    destinationName={trip.destination_name}
+                    remainingDistanceKm={currentDistanceKm}
+                    selectedThresholdKm={selectedThreshold}
+                    isCompleted={trip.status === "completed"}
+                  />
+                </div>
               )}
             </div>
-            <div>
-              <span className="font-bold text-slate-200 block">
-                {notificationEnabled
-                  ? "Audio Siren & Phone Notifications Armed"
-                  : "Audio Notifications Disabled"}
-              </span>
-              <span className="text-[11px] text-slate-400">
-                {notificationEnabled
-                  ? "Leave this tab open on your phone or bedside table."
-                  : "Enable notifications so the loud alarm can wake you up when the traveller arrives."}
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 self-end sm:self-center">
-            {!notificationEnabled ? (
-              <button
-                onClick={() => {
-                  requestNotificationPermission().then((res) => {
-                    setNotificationEnabled(res);
-                    playAlertSound(selectedSound);
-                  });
-                }}
-                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition shadow-sm shrink-0"
-              >
-                Enable Siren
-              </button>
-            ) : (
-              <button
-                onClick={() => playAlertSound(selectedSound)}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition shrink-0 border border-slate-700"
-              >
-                <Volume2 className="h-4 w-4 text-cyan-400" />
-                <span>Test Alarm ({selectedSound})</span>
-              </button>
-            )}
-          </div>
-        </div>
+          </>
+        )}
 
         {/* Fullscreen Emergency Alarm Siren Modal */}
         <AlarmTriggerModal

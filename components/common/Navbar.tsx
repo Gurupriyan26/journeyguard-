@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Shield, Compass, Navigation } from "lucide-react";
+import { Shield, Compass, Navigation, Radio, Sparkles } from "lucide-react";
+import { triggerHaptic } from "@/lib/haptics";
 
 interface NavbarProps {
   statusBadge?: string;
@@ -13,39 +14,48 @@ export default function Navbar({ statusBadge, badgeType = "neutral" }: NavbarPro
   const pathname = usePathname();
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-slate-800/80 bg-slate-950/75 backdrop-blur-md">
-      <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-4 sm:px-6">
-        <Link href="/" className="flex items-center gap-3 group">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-500 text-white shadow-md shadow-blue-500/25 transition-transform group-hover:scale-105">
+    <header className="sticky top-0 z-40 w-full px-3 py-3 sm:px-6">
+      <div className="mx-auto max-w-5xl rounded-3xl border border-white/10 bg-slate-950/80 backdrop-blur-2xl shadow-2xl px-4 sm:px-6 h-16 flex items-center justify-between">
+        {/* Brand Logo & Name */}
+        <Link
+          href="/"
+          onClick={() => triggerHaptic("tap")}
+          className="flex items-center gap-3 group"
+        >
+          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-tr from-blue-600 via-cyan-500 to-indigo-600 text-white shadow-lg shadow-cyan-500/25 transition-transform group-hover:scale-105">
             <Shield className="h-5 w-5" />
           </div>
           <div className="flex flex-col">
-            <span className="text-base font-bold tracking-tight text-white group-hover:text-blue-400 transition-colors">
-              JourneyGuard
+            <span className="text-base font-black tracking-tight text-white group-hover:text-cyan-400 transition-colors flex items-center gap-1.5">
+              <span>JourneyGuard</span>
+              <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/30">
+                PRO
+              </span>
             </span>
-            <span className="text-[10px] font-medium text-slate-400 -mt-1 hidden sm:inline">
-              Safe Journeys • Smarter Pickups
+            <span className="text-[10px] font-semibold text-slate-400 -mt-0.5 hidden sm:inline">
+              Safe Mobile Journeys • Smart Wake-Up Siren
             </span>
           </div>
         </Link>
 
-        <div className="flex items-center gap-3">
+        {/* Status Badge & Actions */}
+        <div className="flex items-center gap-2.5">
           {statusBadge && (
             <div
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-black border backdrop-blur-md shadow-sm ${
                 badgeType === "active"
-                  ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/30"
+                  ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/40"
                   : badgeType === "guardian"
-                  ? "bg-blue-500/10 text-blue-300 border-blue-500/30"
-                  : "bg-slate-800 text-slate-300 border-slate-700"
+                  ? "bg-cyan-500/15 text-cyan-300 border-cyan-500/40"
+                  : "bg-slate-900/90 text-slate-300 border-slate-800"
               }`}
             >
               <span
                 className={`h-2 w-2 rounded-full ${
                   badgeType === "active"
-                    ? "bg-emerald-400 animate-pulse"
+                    ? "bg-emerald-400 animate-ping"
                     : badgeType === "guardian"
-                    ? "bg-blue-400"
+                    ? "bg-cyan-400 animate-pulse"
                     : "bg-slate-400"
                 }`}
               />
@@ -56,7 +66,8 @@ export default function Navbar({ statusBadge, badgeType = "neutral" }: NavbarPro
           {pathname !== "/journey/create" && pathname !== "/" && !pathname.startsWith("/journey/") && (
             <Link
               href="/journey/create"
-              className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-500 hover:bg-blue-400 text-white text-xs font-medium transition shadow-sm"
+              onClick={() => triggerHaptic("tap")}
+              className="hidden sm:inline-flex items-center gap-1.5 px-4 py-2 rounded-2xl bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white text-xs font-black transition shadow-lg shadow-blue-500/25 active:scale-95"
             >
               <Navigation className="h-3.5 w-3.5" />
               <span>Start Journey</span>
@@ -66,10 +77,11 @@ export default function Navbar({ statusBadge, badgeType = "neutral" }: NavbarPro
           {pathname !== "/track" && pathname !== "/" && !pathname.startsWith("/track/") && (
             <Link
               href="/track"
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg border border-slate-800 bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-medium transition"
+              onClick={() => triggerHaptic("tap")}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-2xl border border-slate-800 bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-bold transition shadow-sm active:scale-95"
             >
               <Compass className="h-3.5 w-3.5" />
-              <span>Follow</span>
+              <span>Track Trip</span>
             </Link>
           )}
         </div>
